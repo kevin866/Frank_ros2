@@ -1,0 +1,79 @@
+-- The C compiler identification is GNU 11.4.0
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found ament_cmake: 1.3.12 (/opt/ros/humble/share/ament_cmake/cmake)
+-- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/frank/frank_ws/build/ombot_description
+-- Install configuration: ""
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/arm
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/arm/materials.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/arm/ombot_arm.transmission.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/arm/ombot_arm.urdf.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/arm/ombot_arm.ros2_control.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/arm/ombot_arm_module.urdf.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/arm/ombot_arm_description.urdf.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/base
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/base/materials.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/base/mecanum_base.urdf.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/base/mech
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/base/mech/robot_3d_base.urdf.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/base/mech/mecanum_wheel.urdf.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/base/sensors
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/base/sensors/lidar.urdf.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/base/sensors/imu.urdf.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/base/sensors/rgbd_camera.urdf.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/base/ros2_control_base.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/urdf/ombot.urdf.xacro
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/arm
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/arm/link6.stl
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/arm/link1.stl
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/arm/link2.stl
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/arm/link3.stl
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/arm/gripper_link.stl
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/arm/link5.stl
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/arm/link4.stl
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/arm/gripper_main_link.stl
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/arm/gripper_sub_link.stl
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/arm/end_link.stl
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/base
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/base/camera_link.STL
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/base/front_left_wheel_X3.STL
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/base/back_right_wheel_X3.STL
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/base/rplidar_s2.stl
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/base/base_link_X3.STL
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/base/back_left_wheel_X3.STL
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/base/d435.stl
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/base/front_right_wheel_X3.STL
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/meshes/base/laser_link.STL
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/rviz
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/rviz/view_robot.rviz
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/launch
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/launch/view_ombot.launch.py
+-- Installing: /home/frank/frank_ws/install/share/ament_index/resource_index/package_run_dependencies/ombot_description
+-- Installing: /home/frank/frank_ws/install/share/ament_index/resource_index/parent_prefix_path/ombot_description
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/environment/ament_prefix_path.sh
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/environment/ament_prefix_path.dsv
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/environment/path.sh
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/environment/path.dsv
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/local_setup.bash
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/local_setup.sh
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/local_setup.zsh
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/local_setup.dsv
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/package.dsv
+-- Installing: /home/frank/frank_ws/install/share/ament_index/resource_index/packages/ombot_description
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/cmake/ombot_descriptionConfig.cmake
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/cmake/ombot_descriptionConfig-version.cmake
+-- Installing: /home/frank/frank_ws/install/share/ombot_description/package.xml

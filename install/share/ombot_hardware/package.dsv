@@ -1,0 +1,14 @@
+source;share/ombot_hardware/hook/cmake_prefix_path.ps1
+source;share/ombot_hardware/hook/cmake_prefix_path.dsv
+source;share/ombot_hardware/hook/cmake_prefix_path.sh
+source;share/ombot_hardware/hook/ld_library_path_lib.ps1
+source;share/ombot_hardware/hook/ld_library_path_lib.dsv
+source;share/ombot_hardware/hook/ld_library_path_lib.sh
+source;share/ombot_hardware/hook/pythonpath.ps1
+source;share/ombot_hardware/hook/pythonpath.dsv
+source;share/ombot_hardware/hook/pythonpath.sh
+source;share/ombot_hardware/local_setup.bash
+source;share/ombot_hardware/local_setup.dsv
+source;share/ombot_hardware/local_setup.ps1
+source;share/ombot_hardware/local_setup.sh
+source;share/ombot_hardware/local_setup.zsh

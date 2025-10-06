@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="ombot">
+
+  <xacro:include filename="/home/frank/frank_ws/src/ombot_description/urdf/arm/ombot_arm_description.urdf.xacro" />
+  <!-- <xacro:include filename="/home/frank/ros2_ws/src/ros2_control_demos/ros2_control_demo_description/ombot/urdf/ombot_description.urdf.xacro" /> -->
+  <!-- Import Rviz colors -->
+  <!-- <xacro:include filename="$(find open_manipulator_p_description)/urdf/materials.xacro" /> -->
+  <!-- <xacro:include filename="/home/frank/ros2_ws/src/ros2_control_demos/ros2_control_demo_description/ombot/urdf/materials.xacro" /> -->
+  <xacro:include filename="/home/frank/frank_ws/src/ombot_description/urdf/arm/materials.xacro" />
+
+  <!-- Import Transmission -->
+  <!-- <xacro:include filename="$/home/frank/ros2_ws/src/ros2_control_demos/ros2_control_demo_description/ombot/urdf/ombot.transmission.xacro" /> -->
+  <xacro:include filename="/home/frank/frank_ws/src/ombot_description/urdf/arm/ombot_arm.transmission.xacro" />
+
+  <xacro:ombot_description/>
+  <xacro:include filename="/home/frank/frank_ws/src/ombot_description/urdf/arm/ombot_arm.ros2_control.xacro" />
+
+  <!-- World -->
+  <link name="world"/>
+
+  <!-- World fixed joint-->
+  <joint name="world_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="world"/>
+    <child link="link_1"/>
+  </joint>
+
+  <xacro:ombot_ros2_control name="ombot"/>
+
+</robot>

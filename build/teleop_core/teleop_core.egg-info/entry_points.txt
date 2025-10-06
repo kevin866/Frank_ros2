@@ -1,0 +1,3 @@
+[console_scripts]
+rover2_joy = teleop_core.run_joy:main
+

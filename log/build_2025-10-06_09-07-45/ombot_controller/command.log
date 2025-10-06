@@ -1,0 +1,6 @@
+Invoking command in '/home/frank/frank_ws/build/ombot_controller': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake /home/frank/frank_ws/src/ombot_controller -DCMAKE_INSTALL_PREFIX=/home/frank/frank_ws/install
+Invoked command in '/home/frank/frank_ws/build/ombot_controller' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake /home/frank/frank_ws/src/ombot_controller -DCMAKE_INSTALL_PREFIX=/home/frank/frank_ws/install
+Invoking command in '/home/frank/frank_ws/build/ombot_controller': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --build /home/frank/frank_ws/build/ombot_controller -- -j6 -l6
+Invoked command in '/home/frank/frank_ws/build/ombot_controller' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --build /home/frank/frank_ws/build/ombot_controller -- -j6 -l6
+Invoking command in '/home/frank/frank_ws/build/ombot_controller': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --install /home/frank/frank_ws/build/ombot_controller
+Invoked command in '/home/frank/frank_ws/build/ombot_controller' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --install /home/frank/frank_ws/build/ombot_controller

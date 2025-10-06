@@ -1,0 +1,13 @@
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="ros2_control_mecanum" params="hardware_plugin fl fr rl rr">
+    <ros2_control name="mecanum_base" type="system">
+      <hardware>
+        <plugin>${hardware_plugin}</plugin>
+      </hardware>
+      <joint name="${fl}"><command_interface name="velocity"/><state_interface name="position"/><state_interface name="velocity"/></joint>
+      <joint name="${fr}"><command_interface name="velocity"/><state_interface name="position"/><state_interface name="velocity"/></joint>
+      <joint name="${rl}"><command_interface name="velocity"/><state_interface name="position"/><state_interface name="velocity"/></joint>
+      <joint name="${rr}"><command_interface name="velocity"/><state_interface name="position"/><state_interface name="velocity"/></joint>
+    </ros2_control>
+  </xacro:macro>
+</robot>
