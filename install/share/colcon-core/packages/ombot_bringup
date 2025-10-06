@@ -1,0 +1,1 @@
+controller_manager:joint_state_broadcaster:launch:launch_ros:ombot_base_kinematics:ombot_controller:ombot_description:ombot_hardware:robot_state_publisher:ros2controlcli:ros2launch:rviz2:xacro

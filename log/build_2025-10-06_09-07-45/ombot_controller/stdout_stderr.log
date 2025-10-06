@@ -1,0 +1,71 @@
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found ament_cmake: 1.3.12 (/opt/ros/humble/share/ament_cmake/cmake)
+-- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+-- Found pluginlib: 5.1.0 (/opt/ros/humble/share/pluginlib/cmake)
+-- Found controller_interface: 2.52.0 (/opt/ros/humble/share/controller_interface/cmake)
+-- Found rosidl_generator_c: 3.1.7 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+-- Found rosidl_adapter: 3.1.7 (/opt/ros/humble/share/rosidl_adapter/cmake)
+-- Found rosidl_generator_cpp: 3.1.7 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+-- Found rmw_fastrtps_cpp: 6.2.8 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+-- Found TinyXML2 via Config file: TinyXML2_DIR-NOTFOUND
+-- Found OpenSSL: /usr/lib/aarch64-linux-gnu/libcrypto.so (found version "3.0.2")  
+-- Found TinyXML2 via Config file: TinyXML2_DIR-NOTFOUND
+-- Found FastRTPS: /opt/ros/humble/include  
+-- Found TinyXML2 via Config file: TinyXML2_DIR-NOTFOUND
+-- Found TinyXML2 via Config file: TinyXML2_DIR-NOTFOUND
+-- Using RMW implementation 'rmw_fastrtps_cpp' as default
+-- Looking for C++ include pthread.h
+-- Looking for C++ include pthread.h - found
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Found realtime_tools: 2.14.0 (/opt/ros/humble/share/realtime_tools/cmake)
+-- Found kdl_parser: 2.6.4 (/opt/ros/humble/share/kdl_parser/cmake)
+-- Found eigen3_cmake_module: 0.1.1 (/opt/ros/humble/share/eigen3_cmake_module/cmake)
+-- Found Eigen3: TRUE (found version "3.4.0") 
+-- Ensuring Eigen3 include directory is part of orocos-kdl CMake target
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/frank/frank_ws/build/ombot_controller
+[ 50%] [32mBuilding CXX object CMakeFiles/ombot_controller.dir/src/gravity_cancel_controller.cpp.o[0m
+[ 50%] [32mBuilding CXX object CMakeFiles/ombot_controller.dir/src/effort_controller.cpp.o[0m
+[ 75%] [32mBuilding CXX object CMakeFiles/ombot_controller.dir/src/joint_impedance_controller.cpp.o[0m
+[100%] [32m[1mLinking CXX shared library libombot_controller.so[0m
+[100%] Built target ombot_controller
+-- Install configuration: ""
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/ombot_controller.xml
+-- Installing: /home/frank/frank_ws/install/lib/libombot_controller.so
+-- Set runtime path of "/home/frank/frank_ws/install/lib/libombot_controller.so" to ""
+-- Up-to-date: /home/frank/frank_ws/install/include
+-- Installing: /home/frank/frank_ws/install/include/joint_impedance_controller
+-- Installing: /home/frank/frank_ws/install/include/joint_impedance_controller/joint_impedance_controller.hpp
+-- Installing: /home/frank/frank_ws/install/include/ombot_effort_controller
+-- Installing: /home/frank/frank_ws/install/include/ombot_effort_controller/effort_controller.hpp
+-- Installing: /home/frank/frank_ws/install/include/gravity_cancel_controller
+-- Installing: /home/frank/frank_ws/install/include/gravity_cancel_controller/gravity_cancel_controller.hpp
+-- Up-to-date: /home/frank/frank_ws/install/share/ombot_controller/ombot_controller.xml
+-- Installing: /home/frank/frank_ws/install/share/ament_index/resource_index/package_run_dependencies/ombot_controller
+-- Installing: /home/frank/frank_ws/install/share/ament_index/resource_index/parent_prefix_path/ombot_controller
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/environment/ament_prefix_path.sh
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/environment/ament_prefix_path.dsv
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/environment/path.sh
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/environment/path.dsv
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/local_setup.bash
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/local_setup.sh
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/local_setup.zsh
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/local_setup.dsv
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/package.dsv
+-- Installing: /home/frank/frank_ws/install/share/ament_index/resource_index/packages/ombot_controller
+-- Installing: /home/frank/frank_ws/install/share/ament_index/resource_index/controller_interface__pluginlib__plugin/ombot_controller
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/cmake/ament_cmake_export_dependencies-extras.cmake
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/cmake/ombot_controllerConfig.cmake
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/cmake/ombot_controllerConfig-version.cmake
+-- Installing: /home/frank/frank_ws/install/share/ombot_controller/package.xml

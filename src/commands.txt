@@ -1,0 +1,15 @@
+ros2 launch ros2_control_demo_example_7 view_r6bot.launch.py
+
+ros2 launch ros2_control_demo_example_7 r6bot_controller.launch.py
+
+ros2 launch ros2_control_demo_example_7 send_trajectory.launch.py
+
+ros2 launch ombot_bringup gravity_controller.launch.py
+
+ros2 launch ombot_bringup joint_impedance_controller.launch.py
+
+colcon build --cmake-args -DCMAKE_BUILD_TYPE=Debug
+
+
+ros2 topic pub /mecanum_controller/cmd_vel_unstamped geometry_msgs/msg/Twist \
+  "{linear: {x: 0.3, y: 0.0}, angular: {z: 0.0}}"

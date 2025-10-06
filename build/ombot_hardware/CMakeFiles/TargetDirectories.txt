@@ -1,0 +1,10 @@
+/home/frank/frank_ws/build/ombot_hardware/CMakeFiles/uninstall.dir
+/home/frank/frank_ws/build/ombot_hardware/CMakeFiles/ombot_hardware_uninstall.dir
+/home/frank/frank_ws/build/ombot_hardware/CMakeFiles/ombot_hardware.dir
+/home/frank/frank_ws/build/ombot_hardware/CMakeFiles/test.dir
+/home/frank/frank_ws/build/ombot_hardware/CMakeFiles/edit_cache.dir
+/home/frank/frank_ws/build/ombot_hardware/CMakeFiles/rebuild_cache.dir
+/home/frank/frank_ws/build/ombot_hardware/CMakeFiles/list_install_components.dir
+/home/frank/frank_ws/build/ombot_hardware/CMakeFiles/install.dir
+/home/frank/frank_ws/build/ombot_hardware/CMakeFiles/install/local.dir
+/home/frank/frank_ws/build/ombot_hardware/CMakeFiles/install/strip.dir

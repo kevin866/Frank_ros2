@@ -1,0 +1,9 @@
+/home/frank/frank_ws/build/ombot_bringup/CMakeFiles/uninstall.dir
+/home/frank/frank_ws/build/ombot_bringup/CMakeFiles/ombot_bringup_uninstall.dir
+/home/frank/frank_ws/build/ombot_bringup/CMakeFiles/test.dir
+/home/frank/frank_ws/build/ombot_bringup/CMakeFiles/edit_cache.dir
+/home/frank/frank_ws/build/ombot_bringup/CMakeFiles/rebuild_cache.dir
+/home/frank/frank_ws/build/ombot_bringup/CMakeFiles/list_install_components.dir
+/home/frank/frank_ws/build/ombot_bringup/CMakeFiles/install.dir
+/home/frank/frank_ws/build/ombot_bringup/CMakeFiles/install/local.dir
+/home/frank/frank_ws/build/ombot_bringup/CMakeFiles/install/strip.dir

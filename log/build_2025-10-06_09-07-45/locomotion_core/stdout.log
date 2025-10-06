@@ -1,0 +1,54 @@
+running egg_info
+creating ../../build/locomotion_core/locomotion_core.egg-info
+writing ../../build/locomotion_core/locomotion_core.egg-info/PKG-INFO
+writing dependency_links to ../../build/locomotion_core/locomotion_core.egg-info/dependency_links.txt
+writing entry points to ../../build/locomotion_core/locomotion_core.egg-info/entry_points.txt
+writing requirements to ../../build/locomotion_core/locomotion_core.egg-info/requires.txt
+writing top-level names to ../../build/locomotion_core/locomotion_core.egg-info/top_level.txt
+writing manifest file '../../build/locomotion_core/locomotion_core.egg-info/SOURCES.txt'
+reading manifest file '../../build/locomotion_core/locomotion_core.egg-info/SOURCES.txt'
+writing manifest file '../../build/locomotion_core/locomotion_core.egg-info/SOURCES.txt'
+running build
+running build_py
+creating /home/frank/frank_ws/build/locomotion_core/build
+creating /home/frank/frank_ws/build/locomotion_core/build/lib
+creating /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core
+copying locomotion_core/__init__.py -> /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core
+copying locomotion_core/cmd_roboteq_test.py -> /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core
+copying locomotion_core/cmd_roboteq.py -> /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core
+copying locomotion_core/rover_velocity.py -> /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core
+copying locomotion_core/RoverDescription.py -> /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core
+copying locomotion_core/driver_node.py -> /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core
+copying locomotion_core/RobotDefinition.py -> /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core
+running install
+running install_lib
+creating /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core
+copying /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core/__init__.py -> /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core
+copying /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core/cmd_roboteq_test.py -> /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core
+copying /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core/cmd_roboteq.py -> /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core
+copying /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core/rover_velocity.py -> /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core
+copying /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core/RoverDescription.py -> /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core
+copying /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core/driver_node.py -> /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core
+copying /home/frank/frank_ws/build/locomotion_core/build/lib/locomotion_core/RobotDefinition.py -> /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core
+byte-compiling /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core/__init__.py to __init__.cpython-310.pyc
+byte-compiling /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core/cmd_roboteq_test.py to cmd_roboteq_test.cpython-310.pyc
+byte-compiling /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core/cmd_roboteq.py to cmd_roboteq.cpython-310.pyc
+byte-compiling /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core/rover_velocity.py to rover_velocity.cpython-310.pyc
+byte-compiling /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core/RoverDescription.py to RoverDescription.cpython-310.pyc
+byte-compiling /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core/driver_node.py to driver_node.cpython-310.pyc
+byte-compiling /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core/RobotDefinition.py to RobotDefinition.cpython-310.pyc
+running install_data
+creating /home/frank/frank_ws/install/share/ament_index
+creating /home/frank/frank_ws/install/share/ament_index/resource_index
+creating /home/frank/frank_ws/install/share/ament_index/resource_index/packages
+copying resource/locomotion_core -> /home/frank/frank_ws/install/share/ament_index/resource_index/packages
+copying package.xml -> /home/frank/frank_ws/install/share/locomotion_core
+running install_egg_info
+Copying ../../build/locomotion_core/locomotion_core.egg-info to /home/frank/frank_ws/install/lib/python3.10/site-packages/locomotion_core-0.0.0-py3.10.egg-info
+running install_scripts
+Installing cmd_roboteq script to /home/frank/frank_ws/install/lib/locomotion_core
+Installing drive_selector script to /home/frank/frank_ws/install/lib/locomotion_core
+Installing movebase_core script to /home/frank/frank_ws/install/lib/locomotion_core
+Installing rover_state_controller script to /home/frank/frank_ws/install/lib/locomotion_core
+Installing rover_velocity script to /home/frank/frank_ws/install/lib/locomotion_core
+writing list of installed files to '/home/frank/frank_ws/build/locomotion_core/install.log'

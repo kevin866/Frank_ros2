@@ -1,0 +1,8 @@
+<library path="ombot_hardware">
+  <class type="ombot_hardware::OMBotBaseSystem"
+         base_class_type="hardware_interface::SystemInterface"
+         name="ombot_hardware/OMBotBaseSystem"/>
+  <class type="ombot_hardware::OMBotArmSystem"
+         base_class_type="hardware_interface::SystemInterface"
+         name="ombot_hardware/OMBotArmSystem"/>
+</library>

@@ -1,0 +1,6 @@
+Invoking command in '/home/frank/frank_ws/build/rover_launch': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake /home/frank/frank_ws/src/rover_launch -DCMAKE_INSTALL_PREFIX=/home/frank/frank_ws/install
+Invoked command in '/home/frank/frank_ws/build/rover_launch' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake /home/frank/frank_ws/src/rover_launch -DCMAKE_INSTALL_PREFIX=/home/frank/frank_ws/install
+Invoking command in '/home/frank/frank_ws/build/rover_launch': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --build /home/frank/frank_ws/build/rover_launch -- -j6 -l6
+Invoked command in '/home/frank/frank_ws/build/rover_launch' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --build /home/frank/frank_ws/build/rover_launch -- -j6 -l6
+Invoking command in '/home/frank/frank_ws/build/rover_launch': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --install /home/frank/frank_ws/build/rover_launch
+Invoked command in '/home/frank/frank_ws/build/rover_launch' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --install /home/frank/frank_ws/build/rover_launch
