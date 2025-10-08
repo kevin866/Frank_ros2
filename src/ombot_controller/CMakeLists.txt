@@ -16,6 +16,10 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(kdl_parser REQUIRED)
 find_package(Eigen3 REQUIRED)
+add_executable(mecanum_forward_cmd src/mecanum_forward_cmd.cpp)
+ament_target_dependencies(mecanum_forward_cmd rclcpp geometry_msgs)
+install(TARGETS mecanum_forward_cmd
+  DESTINATION lib/${PROJECT_NAME})
 
 add_library(${PROJECT_NAME} SHARED
   src/effort_controller.cpp

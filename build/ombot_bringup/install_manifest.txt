@@ -3,6 +3,7 @@
 /home/frank/frank_ws/install/share/ombot_bringup/launch/joint_impedance_controller.launch.py
 /home/frank/frank_ws/install/share/ombot_bringup/launch/gravity_controller.launch.py
 /home/frank/frank_ws/install/share/ombot_bringup/launch/ombot_effort_controller.launch.py
+/home/frank/frank_ws/install/share/ombot_bringup/launch/minimum.launch.py
 /home/frank/frank_ws/install/share/ombot_bringup/config/ombot_controller.yaml
 /home/frank/frank_ws/install/share/ament_index/resource_index/package_run_dependencies/ombot_bringup
 /home/frank/frank_ws/install/share/ament_index/resource_index/parent_prefix_path/ombot_bringup

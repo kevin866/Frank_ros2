@@ -5,7 +5,7 @@
   <xacro:include filename="/home/frank/frank_ws/src/ombot_description/urdf/arm/materials.xacro"/>
   <xacro:include filename="/home/frank/frank_ws/src/ombot_description/urdf/arm/ombot_arm_description.urdf.xacro"/>
   <xacro:include filename="/home/frank/frank_ws/src/ombot_description/urdf/arm/ombot_arm.transmission.xacro"/>
-  <xacro:include filename="/home/frank/frank_ws/src/ombot_description/urdf/arm/ombot_arm.ros2_control.xacro"/>
+  <!-- <xacro:include filename="/home/frank/frank_ws/src/ombot_description/urdf/arm/ombot_arm.ros2_control.xacro"/> -->
 
   <!-- 
     Macro to place/mount the arm on any parent link.

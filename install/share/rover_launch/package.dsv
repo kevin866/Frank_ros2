@@ -1,6 +1,9 @@
 source;share/rover_launch/hook/cmake_prefix_path.ps1
 source;share/rover_launch/hook/cmake_prefix_path.dsv
 source;share/rover_launch/hook/cmake_prefix_path.sh
+source;share/rover_launch/hook/ld_library_path_lib.ps1
+source;share/rover_launch/hook/ld_library_path_lib.dsv
+source;share/rover_launch/hook/ld_library_path_lib.sh
 source;share/rover_launch/hook/pythonpath.ps1
 source;share/rover_launch/hook/pythonpath.dsv
 source;share/rover_launch/hook/pythonpath.sh

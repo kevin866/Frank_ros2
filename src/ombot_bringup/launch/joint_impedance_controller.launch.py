@@ -27,7 +27,8 @@ def generate_launch_description():
             PathJoinSubstitution([
                 FindPackageShare("ombot_description"),
                 "urdf",
-                "ombot.urdf.xacro",
+                "arm",
+                "ombot_arm.urdf.xacro",
             ]),
             # optionally add args if your xacro uses them:
             " ",

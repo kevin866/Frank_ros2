@@ -24,8 +24,11 @@
   <link name="${prefix}base_link">
     <visual>
         <geometry>
-            <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/base/base_link_X3.STL"
+            <!-- <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/base/base_link_X3.STL"
+                  scale="${mesh_sx} ${mesh_sy} ${mesh_sz}"/> -->
+            <mesh filename="package://ombot_description/meshes/base/base_link_X3.STL"
                   scale="${mesh_sx} ${mesh_sy} ${mesh_sz}"/>
+
         </geometry>
         <material name="white">
           <color rgba="1 1 1 1"/>

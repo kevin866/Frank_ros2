@@ -7,7 +7,7 @@
 
       <xacro:arg name="robot_name" default="robot_3d"/>
       <xacro:arg name="prefix" default=""/>
-      <xacro:arg name="use_gazebo" default="false"/>
+      <!-- <xacro:arg name="use_gazebo" default="false"/> -->
       
       <!-- <xacro:include filename="$(dirname ${xacro_dir})/mech/robot_3d_base.urdf.xacro"/> -->
       <!-- <xacro:include filename="package://ombot_description/urdf/base/mech/robot_3d_base.urdf.xacro"/> -->
@@ -18,9 +18,9 @@
       <xacro:include filename="/home/frank/frank_ws/src/ombot_description/urdf/base/sensors/imu.urdf.xacro"/>
 
       <!-- <xacro:include filename="$(find-pkg-share ombot_description)/urdf/base/mech/robot_3d_base.urdf.xacro"/> -->
-      <!-- <xacro:include filename="$(find ombot_description)/urdf/base/mech/robot_3d_base.urdf.xacro"/> -->
-      <!-- <xacro:include filename="$(find ombot_description)/urdf/base/mech/mecanum_wheel.urdf.xacro"/> -->
-      <!-- <xacro:include filename="$(find ombot_description)/urdf/base/sensors/rgbd_camera.urdf.xacro"/>
+      <!-- <xacro:include filename="$(find ombot_description)/urdf/base/mech/robot_3d_base.urdf.xacro"/>
+      <xacro:include filename="$(find ombot_description)/urdf/base/mech/mecanum_wheel.urdf.xacro"/>
+      <xacro:include filename="$(find ombot_description)/urdf/base/sensors/rgbd_camera.urdf.xacro"/>
       <xacro:include filename="$(find ombot_description)/urdf/base/sensors/lidar.urdf.xacro"/>
       <xacro:include filename="$(find ombot_description)/urdf/base/sensors/imu.urdf.xacro"/> -->
 
@@ -40,13 +40,13 @@
 
       <xacro:mecanum_wheel
         prefix="$(arg prefix)"
-        side="back_left"
+        side="rear_left"
         x_reflect="-1"
         y_reflect="1"/>
 
       <xacro:mecanum_wheel
         prefix="$(arg prefix)"
-        side="back_right"
+        side="rear_right"
         x_reflect="-1"
         y_reflect="-1"/>
 

@@ -18,6 +18,7 @@ from launch.conditions import IfCondition
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -34,23 +35,38 @@ def generate_launch_description():
     # Initialize Arguments
     gui = LaunchConfiguration("gui")
 
-    # Get URDF via xacro
-    robot_description_content = Command(
-        [
-            PathJoinSubstitution([FindExecutable(name="xacro")]),
-            " ",
-            PathJoinSubstitution(
-                [
-                    FindPackageShare("ombot_description"),
-                    "urdf",
-                    "ombot.urdf.xacro",
-                ]
-            ),
-        ]
-    )
+    # # Get URDF via xacro
+    # robot_description_content = Command(
+    #     [
+    #         PathJoinSubstitution([FindExecutable(name="xacro")]),
+    #         " ",
+    #         PathJoinSubstitution(
+    #             [
+    #                 FindPackageShare("ombot_description"),
+    #                 "urdf",
+    #                 "ombot.urdf.xacro",
+    #             ]
+    #         ),
+    #     ]
+    # )
 
 
-    robot_description = {"robot_description": robot_description_content}
+    # robot_description = {"robot_description": robot_description_content}
+
+
+
+
+    # Xacro -> string robot_description
+    urdf_file = PathJoinSubstitution([
+        FindPackageShare("ombot_description"), "urdf", "ombot.urdf.xacro"
+    ])
+
+    robot_description_content = Command([FindExecutable(name="xacro"), " ", urdf_file])
+
+    robot_description = {
+        "robot_description": ParameterValue(robot_description_content, value_type=str)
+    }
+
 
     rviz_config_file = PathJoinSubstitution(
         [FindPackageShare("ombot_description"), "ombot/rviz", "view_robot.rviz"]
@@ -75,7 +91,7 @@ def generate_launch_description():
         executable="rviz2",
         name="rviz2",
         output="log",
-        # arguments=["-d", rviz_config_file],
+        arguments=["-d", rviz_config_file],
         condition=IfCondition(gui),
     )
 

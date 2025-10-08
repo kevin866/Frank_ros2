@@ -12,6 +12,8 @@ find_package(pluginlib REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(dynamixel_sdk REQUIRED)         # if you use it
 find_package(Eigen3 REQUIRED)
+find_package(serial_driver REQUIRED)
+find_package(io_context REQUIRED)
 
 add_library(${PROJECT_NAME} SHARED
   src/ombot_arm_hardware.cpp
@@ -26,10 +28,9 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 
 ament_target_dependencies(${PROJECT_NAME}
   rclcpp rclcpp_lifecycle pluginlib hardware_interface
-  dynamixel_sdk
+  dynamixel_sdk serial_driver io_context
 )
 target_link_libraries(${PROJECT_NAME} Eigen3::Eigen)
-
 # Export the hardware plugin
 pluginlib_export_plugin_description_file(hardware_interface ombot_hardware.xml)
 

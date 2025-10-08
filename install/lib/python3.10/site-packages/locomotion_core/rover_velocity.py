@@ -34,7 +34,7 @@ class get_move_cmds(Node):
         self.i = 0
         
         # RPM Vector to publish to the roboteq controller.
-        self.rpm_vec = [0, 0, 0, 0]
+        self.rpm_vec = [0.0, 0.0, 0.0, 0.0]
 
     # Computes the velocity vector based on the controller input.
     def move_cmd_callback(self, msg):
@@ -48,7 +48,8 @@ class get_move_cmds(Node):
     def drive_unit_callback(self):
         msg = Float32MultiArray()
         # print(self.rpm_vec)
-        msg.data = self.rpm_vec
+        msg.data = -[100.0, 100.0, 100.0, 100.0]
+
         # print(msg.data)
 
         # Publish to all the motor drivers.

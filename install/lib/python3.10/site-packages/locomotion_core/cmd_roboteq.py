@@ -66,6 +66,9 @@ class MotorDriver(Node):
             
             print(payload_front)
             print(payload_back)
+            self.get_logger().info(f"Front payload: {payload_front}")
+            self.get_logger().info(f"Back payload:  {payload_back}")
+
             if self.initialized_flag:
                 self.roboteq_front.write(str.encode(payload_front))
                 self.roboteq_back.write(str.encode(payload_back))

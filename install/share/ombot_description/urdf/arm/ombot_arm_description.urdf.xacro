@@ -9,7 +9,7 @@
       <geometry>
         <!-- <mesh filename="package://ros2_control_demos/meshes/link_1.stl" scale="0.001 0.001 0.001"/>
         <mesh filename="package://ombot_description/meshes/link6.stl"/> -->
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/link1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/link1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
@@ -17,7 +17,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/link1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/link1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
 
@@ -44,7 +44,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/link2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/link2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
@@ -52,7 +52,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/link2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/link2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
 
@@ -80,7 +80,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/link3.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/link3.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
@@ -88,7 +88,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/link3.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/link3.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
 
@@ -116,7 +116,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/link4.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/link4.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
@@ -124,7 +124,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/link4.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/link4.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
 
@@ -152,7 +152,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/link5.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/link5.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
@@ -160,7 +160,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/link5.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/link5.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
 
@@ -188,7 +188,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/link6.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/link6.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
@@ -196,7 +196,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/link6.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/link6.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
 
@@ -224,7 +224,7 @@
     <visual>
       <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/end_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/end_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey"/>
     </visual>
@@ -232,7 +232,7 @@
     <collision>
       <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/arm/end_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ombot_description/meshes/arm/end_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
 

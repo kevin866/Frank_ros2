@@ -6,7 +6,7 @@
     prefix:=''
     parent:='base_link'
     frame_id:='laser_frame'
-    mesh_file:='/home/frank/frank_ws/src/ombot_description/meshes/base/rplidar_s2.stl'
+    mesh_file:='package://ombot_description/meshes/base/rplidar_s2.stl'
     xyz_offset:='0 0 0.0825'
     rpy_offset:='0 0 0'
     mesh_xyz_offset:='0 0 0'

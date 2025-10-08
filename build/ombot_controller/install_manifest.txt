@@ -1,3 +1,4 @@
+/home/frank/frank_ws/install/lib/ombot_controller/mecanum_forward_cmd
 /home/frank/frank_ws/install/share/ombot_controller/ombot_controller.xml
 /home/frank/frank_ws/install/lib/libombot_controller.so
 /home/frank/frank_ws/install/include/joint_impedance_controller/joint_impedance_controller.hpp

@@ -63,6 +63,7 @@ CMAKE_BINARY_DIR = /home/frank/frank_ws/build/ombot_controller
 # Directory level rules for the build root directory
 
 # The main recursive "all" target.
+all: CMakeFiles/mecanum_forward_cmd.dir/all
 all: CMakeFiles/ombot_controller.dir/all
 .PHONY : all
 
@@ -73,6 +74,7 @@ preinstall:
 # The main recursive "clean" target.
 clean: CMakeFiles/uninstall.dir/clean
 clean: CMakeFiles/ombot_controller_uninstall.dir/clean
+clean: CMakeFiles/mecanum_forward_cmd.dir/clean
 clean: CMakeFiles/ombot_controller.dir/clean
 .PHONY : clean
 
@@ -129,13 +131,39 @@ CMakeFiles/ombot_controller_uninstall.dir/clean:
 .PHONY : CMakeFiles/ombot_controller_uninstall.dir/clean
 
 #=============================================================================
+# Target rules for target CMakeFiles/mecanum_forward_cmd.dir
+
+# All Build rule for target.
+CMakeFiles/mecanum_forward_cmd.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/mecanum_forward_cmd.dir/build.make CMakeFiles/mecanum_forward_cmd.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/mecanum_forward_cmd.dir/build.make CMakeFiles/mecanum_forward_cmd.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/frank/frank_ws/build/ombot_controller/CMakeFiles --progress-num=1,2 "Built target mecanum_forward_cmd"
+.PHONY : CMakeFiles/mecanum_forward_cmd.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/mecanum_forward_cmd.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/frank/frank_ws/build/ombot_controller/CMakeFiles 2
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/mecanum_forward_cmd.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/frank/frank_ws/build/ombot_controller/CMakeFiles 0
+.PHONY : CMakeFiles/mecanum_forward_cmd.dir/rule
+
+# Convenience name for target.
+mecanum_forward_cmd: CMakeFiles/mecanum_forward_cmd.dir/rule
+.PHONY : mecanum_forward_cmd
+
+# clean rule for target.
+CMakeFiles/mecanum_forward_cmd.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/mecanum_forward_cmd.dir/build.make CMakeFiles/mecanum_forward_cmd.dir/clean
+.PHONY : CMakeFiles/mecanum_forward_cmd.dir/clean
+
+#=============================================================================
 # Target rules for target CMakeFiles/ombot_controller.dir
 
 # All Build rule for target.
 CMakeFiles/ombot_controller.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/ombot_controller.dir/build.make CMakeFiles/ombot_controller.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/ombot_controller.dir/build.make CMakeFiles/ombot_controller.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/frank/frank_ws/build/ombot_controller/CMakeFiles --progress-num=1,2,3,4 "Built target ombot_controller"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/frank/frank_ws/build/ombot_controller/CMakeFiles --progress-num=3,4,5,6 "Built target ombot_controller"
 .PHONY : CMakeFiles/ombot_controller.dir/all
 
 # Build rule for subdir invocation for target.

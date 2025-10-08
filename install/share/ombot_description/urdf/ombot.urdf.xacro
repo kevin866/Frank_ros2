@@ -43,67 +43,42 @@
     </hardware>
 
     <!-- ARM HARDWARE -->
-    <hardware>
+    <!-- <hardware>
       <plugin>ombot_hardware/OMBotArmSystem</plugin>
       <param name="port">/dev/ttyUSB0</param>
       <param name="baudrate">1000000</param>
       <param name="default_mode">effort</param>
       <param name="simulate">false</param>
-      <!-- Arm hardware params here if needed -->
-    </hardware>
+    </hardware> -->
 
     <!-- Exported joints/interfaces.
          Keep these in sync with your geometry macros’ joint names. -->
-    <!-- <joint name="front_left_wheel_joint">
-      <command_interface name="velocity"/>
-      <state_interface   name="velocity"/>
-      <state_interface   name="position"/>
-    </joint>
 
+    <joint name="front_left_wheel_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
     <joint name="front_right_wheel_joint">
       <command_interface name="velocity"/>
-      <state_interface   name="velocity"/>
-      <state_interface   name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
     </joint>
-
-    <joint name="back_left_wheel_joint">
-      <command_interface name="velocity"/>
-      <state_interface   name="velocity"/>
-      <state_interface   name="position"/>
-    </joint>
-
-    <joint name="back_right_wheel_joint">
-      <command_interface name="velocity"/>
-      <state_interface   name="velocity"/>
-      <state_interface   name="position"/>
-    </joint> -->
-
-    <joint name="fl_wheel_joint">
+    <joint name="rear_left_wheel_joint">
       <command_interface name="velocity"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
-    <joint name="fr_wheel_joint">
-      <command_interface name="velocity"/>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-    </joint>
-    <joint name="rl_wheel_joint">
-      <command_interface name="velocity"/>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-    </joint>
-    <joint name="rr_wheel_joint">
+    <joint name="rear_right_wheel_joint">
       <command_interface name="velocity"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
 
     <!-- Arm joints (prefix “arm_” because of the module call above) -->
-    <joint name="arm_joint_1">
+    <!-- <joint name="arm_joint_1">
       <command_interface name="position"/>
       <command_interface name="effort"/>
-
       <state_interface   name="position"/>
       <state_interface   name="velocity"/>
       <state_interface   name="effort"/>
@@ -147,7 +122,7 @@
       <state_interface   name="position"/>
       <state_interface   name="velocity"/>
       <state_interface   name="effort"/>
-    </joint>
+    </joint> -->
   </ros2_control>
 
 </robot>
