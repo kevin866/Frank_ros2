@@ -13,3 +13,7 @@ colcon build --cmake-args -DCMAKE_BUILD_TYPE=Debug
 
 ros2 topic pub /mecanum_controller/cmd_vel_unstamped geometry_msgs/msg/Twist \
   "{linear: {x: 0.3, y: 0.0}, angular: {z: 0.0}}"
+
+
+
+colcon build --merge-install

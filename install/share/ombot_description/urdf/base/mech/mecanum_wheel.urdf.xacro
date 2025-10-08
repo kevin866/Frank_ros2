@@ -12,7 +12,7 @@
       <visual>
         <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
         <geometry>
-          <mesh filename="/home/frank/frank_ws/src/ombot_description/meshes/base/${side}_wheel_X3.STL" scale="2.15 2.15 2.15"/>
+          <mesh filename="package://ombot_description/meshes/base/${side}_wheel_X3.STL" scale="2.15 2.15 2.15"/>
         </geometry>
         <material name="dark_gray">
           <color rgba="0.2 0.2 0.2 1.0"/>

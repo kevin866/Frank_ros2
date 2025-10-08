@@ -943,5 +943,6 @@ set(CMAKE_MAKEFILE_PRODUCTS
 set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/uninstall.dir/DependInfo.cmake"
   "CMakeFiles/ombot_controller_uninstall.dir/DependInfo.cmake"
+  "CMakeFiles/mecanum_forward_cmd.dir/DependInfo.cmake"
   "CMakeFiles/ombot_controller.dir/DependInfo.cmake"
   )

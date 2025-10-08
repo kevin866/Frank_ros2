@@ -6,7 +6,7 @@
     <ros2_control name="${name}" type="system">
     
       <hardware>
-        <plugin>ros2_control_demo_example_7/OMBotHardware</plugin>
+        <plugin>ombot_hardware/OMBotArmSystem</plugin>
         <param name="port">/dev/ttyUSB0</param>
         <param name="baudrate">1000000</param>
         <param name="default_mode">effort</param>

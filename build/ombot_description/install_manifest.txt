@@ -11,7 +11,6 @@
 /home/frank/frank_ws/install/share/ombot_description/urdf/base/sensors/lidar.urdf.xacro
 /home/frank/frank_ws/install/share/ombot_description/urdf/base/sensors/imu.urdf.xacro
 /home/frank/frank_ws/install/share/ombot_description/urdf/base/sensors/rgbd_camera.urdf.xacro
-/home/frank/frank_ws/install/share/ombot_description/urdf/base/ros2_control_base.xacro
 /home/frank/frank_ws/install/share/ombot_description/urdf/ombot.urdf.xacro
 /home/frank/frank_ws/install/share/ombot_description/meshes/arm/link6.stl
 /home/frank/frank_ws/install/share/ombot_description/meshes/arm/link1.stl
@@ -25,10 +24,10 @@
 /home/frank/frank_ws/install/share/ombot_description/meshes/arm/end_link.stl
 /home/frank/frank_ws/install/share/ombot_description/meshes/base/camera_link.STL
 /home/frank/frank_ws/install/share/ombot_description/meshes/base/front_left_wheel_X3.STL
-/home/frank/frank_ws/install/share/ombot_description/meshes/base/back_right_wheel_X3.STL
+/home/frank/frank_ws/install/share/ombot_description/meshes/base/rear_left_wheel_X3.STL
+/home/frank/frank_ws/install/share/ombot_description/meshes/base/rear_right_wheel_X3.STL
 /home/frank/frank_ws/install/share/ombot_description/meshes/base/rplidar_s2.stl
 /home/frank/frank_ws/install/share/ombot_description/meshes/base/base_link_X3.STL
-/home/frank/frank_ws/install/share/ombot_description/meshes/base/back_left_wheel_X3.STL
 /home/frank/frank_ws/install/share/ombot_description/meshes/base/d435.stl
 /home/frank/frank_ws/install/share/ombot_description/meshes/base/front_right_wheel_X3.STL
 /home/frank/frank_ws/install/share/ombot_description/meshes/base/laser_link.STL

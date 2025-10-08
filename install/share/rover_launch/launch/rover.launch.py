@@ -47,7 +47,7 @@ def generate_launch_description():
                 'teleop_node.launch.py'))
 )
 
-    ld.add_action(launch_joy)
+    #ld.add_action(launch_joy)
     ld.add_action(cmd_roboteq)
     ld.add_action(rover_vel)
 

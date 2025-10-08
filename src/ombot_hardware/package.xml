@@ -20,6 +20,8 @@
   <depend>pluginlib</depend>
   <depend>hardware_interface</depend>
   <depend>dynamixel_sdk</depend>
+  <depend>serial_driver</depend>
+  <depend>io_context</depend>
 
   <!-- Exec deps -->
   <exec_depend>eigen3_cmake_module</exec_depend>

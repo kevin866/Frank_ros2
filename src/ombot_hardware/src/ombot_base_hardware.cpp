@@ -9,6 +9,9 @@ namespace ombot_hardware
 hardware_interface::CallbackReturn
 OMBotBaseSystem::on_init(const hardware_interface::HardwareInfo & info)
 {
+  RCLCPP_INFO(
+      rclcpp::get_logger("OMBotBaseSystem"),
+      "start initialization");
   if (SystemInterface::on_init(info) != hardware_interface::CallbackReturn::SUCCESS)
     return hardware_interface::CallbackReturn::ERROR;
 
@@ -29,7 +32,20 @@ OMBotBaseSystem::on_init(const hardware_interface::HardwareInfo & info)
 
   // Expect 4 joints
   joint_names_.clear();
-  for (const auto & ji : info_.joints) joint_names_.push_back(ji.name);
+  // for (const auto & ji : info_.joints) joint_names_.push_back(ji.name);
+  joint_names_.clear();
+  for (const auto & ji : info_.joints)
+  {
+    RCLCPP_INFO(
+      rclcpp::get_logger("OMBotBaseSystem"),
+      "Parsed joint from URDF: '%s'", ji.name.c_str());
+    joint_names_.push_back(ji.name);
+  }
+
+  RCLCPP_INFO(
+    rclcpp::get_logger("OMBotBaseSystem"),
+    "Total joints parsed: %zu", joint_names_.size());
+    
   if (joint_names_.size() != 4) {
     RCLCPP_ERROR(rclcpp::get_logger("OMBotBaseSystem"), "Expected 4 wheel joints, got %zu", joint_names_.size());
     return hardware_interface::CallbackReturn::ERROR;
@@ -61,7 +77,7 @@ OMBotBaseSystem::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> si;
   for (size_t i=0;i<joint_names_.size();++i) {
-    RCLCPP_INFO(rclcpp::get_logger("ombot_hw"), "joint='%s'", j.c_str());
+    RCLCPP_INFO(rclcpp::get_logger("ombot_hw"), "joint='%s'", joint_names_[i].c_str());
 
     si.emplace_back(hardware_interface::StateInterface(joint_names_[i], hardware_interface::HW_IF_POSITION, &pos_rad_[i]));
     si.emplace_back(hardware_interface::StateInterface(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &vel_rad_s_[i]));
@@ -103,9 +119,17 @@ OMBotBaseSystem::on_cleanup(const rclcpp_lifecycle::State &)
 hardware_interface::CallbackReturn
 OMBotBaseSystem::on_activate(const rclcpp_lifecycle::State &)
 {
+  // Wake channels with zero speed (RPM) so the driver is “alive”
+  for (auto &c : map_) {
+    RoboteqIface &dev = (c.ctrl==1) ? ctrl1_ : ctrl2_;
+    (void)dev.write_speed(c.ch, 0.0);
+  }
   std::fill(cmd_rad_s_.begin(), cmd_rad_s_.end(), 0.0);
+  RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "Roboteq assumed preconfigured (Closed Loop Speed).");
   return hardware_interface::CallbackReturn::SUCCESS;
 }
+
+
 
 hardware_interface::CallbackReturn
 OMBotBaseSystem::on_deactivate(const rclcpp_lifecycle::State &)
@@ -119,15 +143,15 @@ OMBotBaseSystem::on_deactivate(const rclcpp_lifecycle::State &)
 hardware_interface::return_type
 OMBotBaseSystem::read(const rclcpp::Time &, const rclcpp::Duration &)
 {
-  // Read encoders & speeds (stubbed)
   for (size_t i=0;i<4;i++) {
     const Chan &c = map_[i];
     RoboteqIface &dev = (c.ctrl==1) ? ctrl1_ : ctrl2_;
-    int64_t counts=0; double spd_native=0.0;
-    (void)dev.read_encoder(c.ch, counts);
-    (void)dev.read_speed(c.ch, spd_native);
-    pos_rad_[i] = radFromCounts(counts);
-    vel_rad_s_[i] = radPerSecFromNative(spd_native);
+    int64_t counts = 0;
+    double motor_rpm = 0.0;
+    (void)dev.read_encoder(c.ch, counts);   // motor shaft counts
+    (void)dev.read_speed(c.ch, motor_rpm);  // motor RPM
+    pos_rad_[i]   = wheelRad_from_encoderCounts(counts);
+    vel_rad_s_[i] = wheelRadPerSec_from_motorRPM(motor_rpm);
   }
   return hardware_interface::return_type::OK;
 }
@@ -135,15 +159,32 @@ OMBotBaseSystem::read(const rclcpp::Time &, const rclcpp::Duration &)
 hardware_interface::return_type
 OMBotBaseSystem::write(const rclcpp::Time &, const rclcpp::Duration &)
 {
-  // Clamp & send speeds
-  for (size_t i=0;i<4;i++) {
-    double u = std::clamp(cmd_rad_s_[i], -max_wheel_rad_s_, +max_wheel_rad_s_);
-    const Chan &c = map_[i];
-    RoboteqIface &dev = (c.ctrl==1) ? ctrl1_ : ctrl2_;
-    (void)dev.write_speed(c.ch, nativeSpeedFromRadPerSec(u));
+  // Send commands to Roboteq controllers, matching Python logic
+  for (size_t i=0;i<2;i++) {
+    std::string payload_front, payload_back;
+    if (deadman_) {
+      payload_front = "!G " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i])) + "_";
+      payload_back  = "!G " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i+2])) + "_";
+    } else {
+      payload_front = "!MS " + std::to_string(i+1) + "_";
+      payload_back  = "!MS " + std::to_string(i+1) + "_";
+    }
+    RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "FRONT: %s", payload_front.c_str());
+    RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "BACK: %s", payload_back.c_str());
+    ctrl1_.write_raw(payload_front);
+    ctrl2_.write_raw(payload_back);
   }
+
+  // Optional: one-line summary
+  RCLCPP_INFO_THROTTLE(
+    rclcpp::get_logger("OMBotBaseSystem"), ros_clock_, 1000,
+    "cmd wheel(rad/s): [%.2f %.2f %.2f %.2f]",
+    cmd_rad_s_[0], cmd_rad_s_[1], cmd_rad_s_[2], cmd_rad_s_[3]
+  );
+
   return hardware_interface::return_type::OK;
 }
+
 
 } // namespace ombot_hardware
 

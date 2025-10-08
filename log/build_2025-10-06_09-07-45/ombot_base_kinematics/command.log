@@ -1,6 +1,0 @@
-Invoking command in '/home/frank/frank_ws/build/ombot_base_kinematics': /usr/bin/cmake /home/frank/frank_ws/src/ombot_base_kinematics -DCATKIN_INSTALL_INTO_PREFIX_ROOT=0 -DCMAKE_INSTALL_PREFIX=/home/frank/frank_ws/install
-Invoked command in '/home/frank/frank_ws/build/ombot_base_kinematics' returned '0': /usr/bin/cmake /home/frank/frank_ws/src/ombot_base_kinematics -DCATKIN_INSTALL_INTO_PREFIX_ROOT=0 -DCMAKE_INSTALL_PREFIX=/home/frank/frank_ws/install
-Invoking command in '/home/frank/frank_ws/build/ombot_base_kinematics': /usr/bin/cmake --build /home/frank/frank_ws/build/ombot_base_kinematics -- -j6 -l6
-Invoked command in '/home/frank/frank_ws/build/ombot_base_kinematics' returned '0': /usr/bin/cmake --build /home/frank/frank_ws/build/ombot_base_kinematics -- -j6 -l6
-Invoking command in '/home/frank/frank_ws/build/ombot_base_kinematics': /usr/bin/cmake --install /home/frank/frank_ws/build/ombot_base_kinematics
-Invoked command in '/home/frank/frank_ws/build/ombot_base_kinematics' returned '0': /usr/bin/cmake --install /home/frank/frank_ws/build/ombot_base_kinematics

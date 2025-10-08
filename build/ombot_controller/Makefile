@@ -198,6 +198,19 @@ ombot_controller_uninstall/fast:
 .PHONY : ombot_controller_uninstall/fast
 
 #=============================================================================
+# Target rules for targets named mecanum_forward_cmd
+
+# Build rule for target.
+mecanum_forward_cmd: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 mecanum_forward_cmd
+.PHONY : mecanum_forward_cmd
+
+# fast build rule for target.
+mecanum_forward_cmd/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/mecanum_forward_cmd.dir/build.make CMakeFiles/mecanum_forward_cmd.dir/build
+.PHONY : mecanum_forward_cmd/fast
+
+#=============================================================================
 # Target rules for targets named ombot_controller
 
 # Build rule for target.
@@ -282,6 +295,30 @@ src/joint_impedance_controller.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/ombot_controller.dir/build.make CMakeFiles/ombot_controller.dir/src/joint_impedance_controller.cpp.s
 .PHONY : src/joint_impedance_controller.cpp.s
 
+src/mecanum_forward_cmd.o: src/mecanum_forward_cmd.cpp.o
+.PHONY : src/mecanum_forward_cmd.o
+
+# target to build an object file
+src/mecanum_forward_cmd.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/mecanum_forward_cmd.dir/build.make CMakeFiles/mecanum_forward_cmd.dir/src/mecanum_forward_cmd.cpp.o
+.PHONY : src/mecanum_forward_cmd.cpp.o
+
+src/mecanum_forward_cmd.i: src/mecanum_forward_cmd.cpp.i
+.PHONY : src/mecanum_forward_cmd.i
+
+# target to preprocess a source file
+src/mecanum_forward_cmd.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/mecanum_forward_cmd.dir/build.make CMakeFiles/mecanum_forward_cmd.dir/src/mecanum_forward_cmd.cpp.i
+.PHONY : src/mecanum_forward_cmd.cpp.i
+
+src/mecanum_forward_cmd.s: src/mecanum_forward_cmd.cpp.s
+.PHONY : src/mecanum_forward_cmd.s
+
+# target to generate assembly for a file
+src/mecanum_forward_cmd.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/mecanum_forward_cmd.dir/build.make CMakeFiles/mecanum_forward_cmd.dir/src/mecanum_forward_cmd.cpp.s
+.PHONY : src/mecanum_forward_cmd.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -297,6 +334,7 @@ help:
 	@echo "... test"
 	@echo "... ombot_controller_uninstall"
 	@echo "... uninstall"
+	@echo "... mecanum_forward_cmd"
 	@echo "... ombot_controller"
 	@echo "... src/effort_controller.o"
 	@echo "... src/effort_controller.i"
@@ -307,6 +345,9 @@ help:
 	@echo "... src/joint_impedance_controller.o"
 	@echo "... src/joint_impedance_controller.i"
 	@echo "... src/joint_impedance_controller.s"
+	@echo "... src/mecanum_forward_cmd.o"
+	@echo "... src/mecanum_forward_cmd.i"
+	@echo "... src/mecanum_forward_cmd.s"
 .PHONY : help
 
 

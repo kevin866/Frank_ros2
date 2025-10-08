@@ -7,7 +7,7 @@
     prefix:=''
     camera_name:='cam_1'
     parent:='base_link'
-    mesh_file:='/home/frank/frank_ws/src/ombot_description/meshes/base/d435.stl'
+    mesh_file:='package://ombot_description/meshes/base/d435.stl'
     xyz_offset:='0.105 0 0.05'
     rpy_offset:='0 -0.50 0'
     mesh_xyz_offset:='0 0 0'
