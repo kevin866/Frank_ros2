@@ -10,6 +10,9 @@
 #include "hardware_interface/loaned_state_interface.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+#include "realtime_tools/realtime_publisher.hpp"
+#include "trajectory_msgs/msg/joint_trajectory.hpp"
 
 #include "realtime_tools/realtime_buffer.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
@@ -19,6 +22,7 @@
 #include "kdl/jntarray.hpp"
 #include "kdl/chaindynparam.hpp"
 #include "kdl/frames.hpp"
+#include "kdl/chainfksolverpos_recursive.hpp"
 
 namespace ombot_controller
 {
@@ -70,6 +74,16 @@ public:
   update(const rclcpp::Time &, const rclcpp::Duration &) override;
 
 private:
+  // --- publishing end-effector pose (optional) ---
+  bool publish_ee_pose_{true};                 // param: enable/disable
+  std::string ee_pose_topic_{"/ee_pose"};      // param: topic name
+
+  // realtime publisher (OK to call from update() with trylock)
+  std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::msg::PoseStamped>> ee_pub_;
+
+  // FK solver (reuses existing KDL chain_)
+  std::unique_ptr<KDL::ChainFkSolverPos_recursive> fk_solver_;
+
   // ----- parameters -----
   std::vector<std::string> joint_names_;
   std::vector<double> kp_, kd_;
@@ -111,12 +125,34 @@ private:
 
   // ROS comms
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr sub_cmd_;
+  rclcpp::Subscription<trajectory_msgs::msg::JointTrajectory>::SharedPtr sub_traj_;
+
+  struct Poly5Seg {
+    double t0, T;                // segment start & duration
+    std::vector<double> q0, v0, a0, q1, v1, a1; // boundary conds
+    // cached 6-coeffs per joint (a0..a5); compute on activation
+    std::vector<std::array<double,6>> coeffs;
+  };
+  struct TrajRT {                 // RT-visible plan
+    std::vector<Poly5Seg> segs;
+    double t_plan0 = 0.0;         // controller time at plan start
+    bool   valid = false;
+  };
+  realtime_tools::RealtimeBuffer<TrajRT> traj_rt_;
+  TrajRT traj_shadow_;
 
   // ----- helpers -----
   void command_cb(const sensor_msgs::msg::JointState::SharedPtr msg);
   void compute_gravity(const std::vector<double>& q, std::vector<double>& tau_g);
   void clamp_effort(std::vector<double>& tau) const;
   void maybe_filter_velocity(double dt);
-};
+  void traj_cb(const trajectory_msgs::msg::JointTrajectory::SharedPtr msg);
+  void eval_traj(double t, std::vector<double> &qd,
+                 std::vector<double> &dqd, std::vector<double> &dqdd);
+  static std::array<double,6> quintic_coeff(
+      double q0, double v0, double a0,
+      double q1, double v1, double a1,
+      double T);
+  };
 
 }  // namespace ombot_controller

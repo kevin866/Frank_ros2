@@ -25,14 +25,25 @@ def generate_launch_description():
             output='screen',
             parameters=[{'robot_description': robot_description}],
         ),
+        # Node(
+        #     package='controller_manager',
+        #     executable='ros2_control_node',
+        #     output='screen',
+        #     parameters=[
+        #         {'robot_description': robot_description},  
+        #         controllers_yaml,
+        #         {'validate_interfaces': False}
+        #     ],
+        # ),
         Node(
-            package='controller_manager',
+            package='controller_manager', 
             executable='ros2_control_node',
-            output='screen',
             parameters=[
-                {'robot_description': robot_description},  # <-- same wrapping here
-                controllers_yaml
+                {'robot_description': robot_description},
+                controllers_yaml,
+                {'validate_interfaces': False}
             ],
+            output='screen'
         ),
         Node(
             package='controller_manager',

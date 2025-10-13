@@ -16,6 +16,11 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(kdl_parser REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)        
+
 add_executable(mecanum_forward_cmd src/mecanum_forward_cmd.cpp)
 ament_target_dependencies(mecanum_forward_cmd rclcpp geometry_msgs)
 install(TARGETS mecanum_forward_cmd
@@ -35,6 +40,11 @@ ament_target_dependencies(${PROJECT_NAME}
   pluginlib rcpputils controller_interface realtime_tools
   trajectory_msgs rclcpp rclcpp_lifecycle std_msgs kdl_parser
 )
+target_link_libraries(${PROJECT_NAME} Eigen3::Eigen)
+
+
+
+add_executable(ee_to_base src/ee_to_base.cpp)
 ament_target_dependencies(ee_to_base
   rclcpp
   geometry_msgs
@@ -42,8 +52,9 @@ ament_target_dependencies(ee_to_base
   tf2
   tf2_geometry_msgs
 )
+install(TARGETS ee_to_base
+DESTINATION lib/${PROJECT_NAME})          # <-- executables go here in ROS 2
 
-target_link_libraries(${PROJECT_NAME} Eigen3::Eigen)
 
 # Export controller plugins
 pluginlib_export_plugin_description_file(controller_interface ombot_controller.xml)

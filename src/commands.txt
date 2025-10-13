@@ -17,3 +17,8 @@ ros2 topic pub /mecanum_controller/cmd_vel_unstamped geometry_msgs/msg/Twist \
 
 
 colcon build --merge-install
+
+
+To run the arm with base
+ros2 launch ombot_bringup ombot.launch.py 
+python3 ee2base.py 
