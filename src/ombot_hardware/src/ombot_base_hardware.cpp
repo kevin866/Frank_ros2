@@ -9,45 +9,51 @@ namespace ombot_hardware
 hardware_interface::CallbackReturn
 OMBotBaseSystem::on_init(const hardware_interface::HardwareInfo & info)
 {
-  RCLCPP_INFO(
-      rclcpp::get_logger("OMBotBaseSystem"),
-      "start initialization");
+  RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "start initialization");
   if (SystemInterface::on_init(info) != hardware_interface::CallbackReturn::SUCCESS)
     return hardware_interface::CallbackReturn::ERROR;
 
-  // Read params from <hardware> block in ros2_control xacro
+  // Helper to read params from <hardware> block
   auto getp = [&](const std::string &name, const std::string &def="")->std::string{
     auto it = info_.hardware_parameters.find(name);
     return (it!=info_.hardware_parameters.end()) ? it->second : def;
   };
 
+  // --- ports & tuning ---
   ctrl1_port_ = getp("controller_1_port", "/dev/ttyACM0");
   ctrl2_port_ = getp("controller_2_port", "/dev/ttyACM1");
   if (auto s = getp("controller_baud", "115200"); !s.empty()) ctrl_baud_ = std::stoi(s);
 
   if (auto s = getp("wheel_radius", "0.0762"); !s.empty()) wheel_radius_ = std::stod(s);
-  if (auto s = getp("encoder_cpr", "2048"); !s.empty()) encoder_cpr_ = std::stod(s);
-  if (auto s = getp("gear_ratio", "1.0"); !s.empty()) gear_ratio_ = std::stod(s);
+  if (auto s = getp("encoder_cpr", "2048");   !s.empty()) encoder_cpr_ = std::stod(s);
+  if (auto s = getp("gear_ratio", "1.0");     !s.empty()) gear_ratio_   = std::stod(s);
   if (auto s = getp("max_wheel_rad_s", "20.0"); !s.empty()) max_wheel_rad_s_ = std::stod(s);
 
-  // Expect 4 joints
+  // --- which joints belong to THIS hardware ---
+  // Either grab from params (optional) or use known names
+  std::array<std::string,4> desired_wheels = {
+    getp("front_left_joint",  "front_left_wheel_joint"),
+    getp("front_right_joint", "front_right_wheel_joint"),
+    getp("rear_left_joint",   "rear_left_wheel_joint"),
+    getp("rear_right_joint",  "rear_right_wheel_joint")
+  };
+  std::unordered_set<std::string> wheel_set(desired_wheels.begin(), desired_wheels.end());
+
   joint_names_.clear();
-  // for (const auto & ji : info_.joints) joint_names_.push_back(ji.name);
-  joint_names_.clear();
-  for (const auto & ji : info_.joints)
-  {
-    RCLCPP_INFO(
-      rclcpp::get_logger("OMBotBaseSystem"),
-      "Parsed joint from URDF: '%s'", ji.name.c_str());
-    joint_names_.push_back(ji.name);
+  for (const auto & ji : info_.joints) {
+    if (wheel_set.count(ji.name)) {
+      RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "Claiming wheel joint: '%s'", ji.name.c_str());
+      joint_names_.push_back(ji.name);
+    } else {
+      // Just FYI for debugging; these will belong to other hardware (e.g., arm)
+      RCLCPP_DEBUG(rclcpp::get_logger("OMBotBaseSystem"), "Ignoring non-wheel joint: '%s'", ji.name.c_str());
+    }
   }
 
-  RCLCPP_INFO(
-    rclcpp::get_logger("OMBotBaseSystem"),
-    "Total joints parsed: %zu", joint_names_.size());
-    
   if (joint_names_.size() != 4) {
-    RCLCPP_ERROR(rclcpp::get_logger("OMBotBaseSystem"), "Expected 4 wheel joints, got %zu", joint_names_.size());
+    RCLCPP_ERROR(rclcpp::get_logger("OMBotBaseSystem"),
+      "Expected 4 wheel joints, found %zu. Check names in URDF/YAML.", joint_names_.size());
+    for (auto &n : joint_names_) RCLCPP_ERROR(rclcpp::get_logger("OMBotBaseSystem"), "  found: %s", n.c_str());
     return hardware_interface::CallbackReturn::ERROR;
   }
 
@@ -55,7 +61,7 @@ OMBotBaseSystem::on_init(const hardware_interface::HardwareInfo & info)
   auto parse_map = [&](const std::string &v)->Chan{
     Chan c{1,1};
     if (v.find("ctrl2") != std::string::npos) c.ctrl = 2;
-    if (v.find(":B") != std::string::npos || v.find(":b") != std::string::npos) c.ch = 2;
+    if (v.find(":B")   != std::string::npos || v.find(":b") != std::string::npos) c.ch = 2;
     return c;
   };
   std::vector<std::string> map_keys = {"fl_map","fr_map","rl_map","rr_map"};
@@ -65,9 +71,14 @@ OMBotBaseSystem::on_init(const hardware_interface::HardwareInfo & info)
     map_[i] = parse_map(v);
   }
 
-  pos_rad_.assign(4, 0.0);
-  vel_rad_s_.assign(4, 0.0);
-  cmd_rad_s_.assign(4, 0.0);
+  // Size buffers EXACTLY to the number of joints this hardware owns (4)
+  pos_rad_.assign(joint_names_.size(), 0.0);
+  vel_rad_s_.assign(joint_names_.size(), 0.0);
+  cmd_rad_s_.assign(joint_names_.size(), 0.0);
+
+  RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "Initialization OK; wheels=[%s,%s,%s,%s]",
+              joint_names_[0].c_str(), joint_names_[1].c_str(),
+              joint_names_[2].c_str(), joint_names_[3].c_str());
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -76,12 +87,12 @@ std::vector<hardware_interface::StateInterface>
 OMBotBaseSystem::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> si;
+  si.reserve(joint_names_.size()*2);
   for (size_t i=0;i<joint_names_.size();++i) {
-    RCLCPP_INFO(rclcpp::get_logger("ombot_hw"), "joint='%s'", joint_names_[i].c_str());
-
-    si.emplace_back(hardware_interface::StateInterface(joint_names_[i], hardware_interface::HW_IF_POSITION, &pos_rad_[i]));
-    si.emplace_back(hardware_interface::StateInterface(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &vel_rad_s_[i]));
+    si.emplace_back(joint_names_[i], hardware_interface::HW_IF_POSITION, &pos_rad_[i]);
+    si.emplace_back(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &vel_rad_s_[i]);
   }
+  RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "Exported %zu state interfaces", si.size());
   return si;
 }
 
@@ -89,9 +100,11 @@ std::vector<hardware_interface::CommandInterface>
 OMBotBaseSystem::export_command_interfaces()
 {
   std::vector<hardware_interface::CommandInterface> ci;
+  ci.reserve(joint_names_.size());
   for (size_t i=0;i<joint_names_.size();++i) {
-    ci.emplace_back(hardware_interface::CommandInterface(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &cmd_rad_s_[i]));
+    ci.emplace_back(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &cmd_rad_s_[i]);
   }
+  RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "Exported %zu command interfaces (velocity)", ci.size());
   return ci;
 }
 
@@ -169,18 +182,18 @@ OMBotBaseSystem::write(const rclcpp::Time &, const rclcpp::Duration &)
       payload_front = "!MS " + std::to_string(i+1) + "_";
       payload_back  = "!MS " + std::to_string(i+1) + "_";
     }
-    RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "FRONT: %s", payload_front.c_str());
-    RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "BACK: %s", payload_back.c_str());
+    // RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "FRONT: %s", payload_front.c_str());
+    // RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "BACK: %s", payload_back.c_str());
     ctrl1_.write_raw(payload_front);
     ctrl2_.write_raw(payload_back);
   }
 
   // Optional: one-line summary
-  RCLCPP_INFO_THROTTLE(
-    rclcpp::get_logger("OMBotBaseSystem"), ros_clock_, 1000,
-    "cmd wheel(rad/s): [%.2f %.2f %.2f %.2f]",
-    cmd_rad_s_[0], cmd_rad_s_[1], cmd_rad_s_[2], cmd_rad_s_[3]
-  );
+  // RCLCPP_INFO_THROTTLE(
+  //   rclcpp::get_logger("OMBotBaseSystem"), ros_clock_, 1000,
+  //   "cmd wheel(rad/s): [%.2f %.2f %.2f %.2f]",
+  //   cmd_rad_s_[0], cmd_rad_s_[1], cmd_rad_s_[2], cmd_rad_s_[3]
+  // );
 
   return hardware_interface::return_type::OK;
 }

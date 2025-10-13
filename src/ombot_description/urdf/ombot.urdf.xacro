@@ -21,7 +21,7 @@
 
   <!-- ONE combined ros2_control block for base + arm hardware -->
   <!-- If your macros already “emit” <ros2_control>, remove those and keep this single block. -->
-  <ros2_control name="ombot_hw" type="system">
+  <ros2_control name="ombot_base" type="system">
     <!-- BASE HARDWARE -->
     <hardware>
       <plugin>ombot_hardware/OMBotBaseSystem</plugin>
@@ -41,15 +41,6 @@
         <param name="gear_ratio">1.0</param>
         <param name="max_wheel_rad_s">20.0</param>
     </hardware>
-
-    <!-- ARM HARDWARE -->
-    <!-- <hardware>
-      <plugin>ombot_hardware/OMBotArmSystem</plugin>
-      <param name="port">/dev/ttyUSB0</param>
-      <param name="baudrate">1000000</param>
-      <param name="default_mode">effort</param>
-      <param name="simulate">false</param>
-    </hardware> -->
 
     <!-- Exported joints/interfaces.
          Keep these in sync with your geometry macros’ joint names. -->
@@ -75,15 +66,27 @@
       <state_interface name="velocity"/>
     </joint>
 
+ </ros2_control>
+  <ros2_control name="ombot_arm" type="system">
+
+    <!-- ARM HARDWARE -->
+    <hardware>
+      <plugin>ombot_hardware/OMBotArmSystem</plugin>
+      <param name="port">/dev/ttyUSB0</param>
+      <param name="baudrate">1000000</param>
+      <param name="default_mode">effort</param>
+      <param name="simulate">false</param>
+    </hardware>
+
     <!-- Arm joints (prefix “arm_” because of the module call above) -->
-    <!-- <joint name="arm_joint_1">
+    <joint name="joint_1">
       <command_interface name="position"/>
       <command_interface name="effort"/>
       <state_interface   name="position"/>
       <state_interface   name="velocity"/>
       <state_interface   name="effort"/>
     </joint>
-    <joint name="arm_joint_2">
+    <joint name="joint_2">
       <command_interface name="position"/>
       <command_interface name="effort"/>
 
@@ -91,7 +94,7 @@
       <state_interface   name="velocity"/>
       <state_interface   name="effort"/>
     </joint>
-    <joint name="arm_joint_3">
+    <joint name="joint_3">
       <command_interface name="position"/>
       <command_interface name="effort"/>
 
@@ -99,7 +102,7 @@
       <state_interface   name="velocity"/>
       <state_interface   name="effort"/>
     </joint>
-    <joint name="arm_joint_4">
+    <joint name="joint_4">
       <command_interface name="position"/>
       <command_interface name="effort"/>
 
@@ -107,7 +110,7 @@
       <state_interface   name="velocity"/>
       <state_interface   name="effort"/>
     </joint>
-    <joint name="arm_joint_5">
+    <joint name="joint_5">
       <command_interface name="position"/>
       <command_interface name="effort"/>
 
@@ -115,14 +118,14 @@
       <state_interface   name="velocity"/>
       <state_interface   name="effort"/>
     </joint>
-    <joint name="arm_joint_6">
+    <joint name="joint_6">
       <command_interface name="position"/>
       <command_interface name="effort"/>
 
       <state_interface   name="position"/>
       <state_interface   name="velocity"/>
       <state_interface   name="effort"/>
-    </joint> -->
+    </joint>
   </ros2_control>
 
 </robot>
