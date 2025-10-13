@@ -35,6 +35,14 @@ ament_target_dependencies(${PROJECT_NAME}
   pluginlib rcpputils controller_interface realtime_tools
   trajectory_msgs rclcpp rclcpp_lifecycle std_msgs kdl_parser
 )
+ament_target_dependencies(ee_to_base
+  rclcpp
+  geometry_msgs
+  std_srvs
+  tf2
+  tf2_geometry_msgs
+)
+
 target_link_libraries(${PROJECT_NAME} Eigen3::Eigen)
 
 # Export controller plugins

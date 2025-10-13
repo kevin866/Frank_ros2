@@ -1,9 +1,0 @@
-/home/frank/frank_ws/build/ombot_description/CMakeFiles/uninstall.dir
-/home/frank/frank_ws/build/ombot_description/CMakeFiles/ombot_description_uninstall.dir
-/home/frank/frank_ws/build/ombot_description/CMakeFiles/test.dir
-/home/frank/frank_ws/build/ombot_description/CMakeFiles/edit_cache.dir
-/home/frank/frank_ws/build/ombot_description/CMakeFiles/rebuild_cache.dir
-/home/frank/frank_ws/build/ombot_description/CMakeFiles/list_install_components.dir
-/home/frank/frank_ws/build/ombot_description/CMakeFiles/install.dir
-/home/frank/frank_ws/build/ombot_description/CMakeFiles/install/local.dir
-/home/frank/frank_ws/build/ombot_description/CMakeFiles/install/strip.dir
