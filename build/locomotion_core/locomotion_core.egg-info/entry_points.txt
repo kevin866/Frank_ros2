@@ -1,7 +1,0 @@
-[console_scripts]
-cmd_roboteq = locomotion_core.cmd_roboteq:main
-drive_selector = locomotion_core.drive_selector:main
-movebase_core = locomotion_core.movebase_core:main
-rover_state_controller = locomotion_core.rover_state_controller:main
-rover_velocity = locomotion_core.rover_velocity:main
-

@@ -1,3 +1,24 @@
+# ROS 2 build artifacts
 build/
 install/
 log/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Colcon & CMake metadata
+.colcon/
+CMakeLists.txt.user
+CMakeCache.txt
+*.cmake
+*.swp
+*.bak
+
+# VSCode and JetBrains
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
