@@ -1,8 +1,9 @@
 from launch import LaunchDescription
-from launch.actions import RegisterEventHandler, DeclareLaunchArgument
+from launch.actions import RegisterEventHandler, DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -16,7 +17,12 @@ def generate_launch_description():
             "gui",
             default_value="true",
             description="Start RViz2 automatically with this launch file.",
-        )
+        ),
+        DeclareLaunchArgument(
+            "launch_zed",
+            default_value="true",
+            description="Launch ZED2i camera.",
+        ),
     ]
 
     # --- URDF via xacro for base ---
@@ -124,10 +130,10 @@ def generate_launch_description():
         name='ee_to_base',
         parameters=[{
             'use_stamped_out': True,        # set False if /mecanum_controller/reference expects Twist
-            'kp_lin': 0.35,
-            'kp_yaw': 1.0,
-            'vmax': 0.5,
-            'wmax': 1.0,
+            'kp_lin': -200.0,
+            'kp_yaw': 20.0,
+            'vmax': 5.0,
+            'wmax': 5.0,
             'lpf_alpha': 0.4,
             'deadband_m': 0.01,
             'deadband_yaw': 0.02,
@@ -137,6 +143,22 @@ def generate_launch_description():
             'publish_rate_hz': 50.0,
         }],)
     
+    # ZED Camera Launch
+    launch_zed = LaunchConfiguration("launch_zed")
+    zed_camera_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            PathJoinSubstitution([
+                FindPackageShare('zed_wrapper'),
+                'launch',
+                'zed_camera.launch.py'
+            ])
+        ]),
+        launch_arguments={
+            'camera_model': 'zed2',
+        }.items(),
+        condition=IfCondition(launch_zed),
+    )
+    
     # Launch all nodes
     nodes = [
         control_node,
@@ -145,6 +167,7 @@ def generate_launch_description():
         mecanum_controller_spawner,
         delay_impedance_after_jsb,
         delay_rviz_after_jsb,
-        # ee2base,
+        # zed_camera_launch,
+        ee2base,
     ]
     return LaunchDescription(declared_arguments + nodes)

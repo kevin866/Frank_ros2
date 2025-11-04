@@ -1,0 +1,20 @@
+[ Task / Planner / Teleop ]
+          ↓ (targets in task space)
+[ Outer Controller ]
+  e.g., Resolved-Rate / Whole-Body (operational space)
+          ↓ (writes refs)
+[ Inner Controller ]
+  e.g., Joint-Space Impedance  (effort/torque control)
+          ↓ (hardware commands)
+[ Hardware Interface / Drivers ]
+            
+
+lower contorller uses on_export_reference_interfaces to export reference inteface for higher level controllers
+to write to them and use update_and write commands() to execute.
+Quick rules of thumb
+
+Upstream exports and writes: Export reference interfaces under its own controller instance name (get_node()->get_name()), then write values there each update.
+Downstream claims and reads: Claim the upstream names in its reference_interface_configuration() and read those values in update; don’t rely on exporting your own for this particular link.
+You can export and claim: A controller in the middle of a chain can both claim upstream references and export its own for a further downstream layer.
+
+example:https://github.com/ros-controls/ros2_control_demos/blob/humble/example_12/controllers/src/passthrough_controller.cpp 

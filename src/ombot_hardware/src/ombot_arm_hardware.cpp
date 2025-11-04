@@ -1,6 +1,7 @@
 #include "ombot_hardware/ombot_arm_hardware.hpp"
 #include <string>
 #include <vector>
+#include <chrono>
 
 
 namespace ombot_hardware
@@ -29,6 +30,7 @@ CallbackReturn OMBotArmSystem::on_init(const hardware_interface::HardwareInfo& i
   if (auto it = info_.hardware_parameters.find("simulate"); it != info_.hardware_parameters.end()) {
     simulate_ = (it->second == "true" || it->second == "1");
   }
+
 
   // ---- Params (just read; don't open hardware here) ----
   if (auto it = info_.hardware_parameters.find("port"); it != info_.hardware_parameters.end())
@@ -84,6 +86,8 @@ CallbackReturn OMBotArmSystem::on_init(const hardware_interface::HardwareInfo& i
   // Prepare SDK pointers only (no I/O yet)
   portHandler_   = dynamixel::PortHandler::getPortHandler(device_name_.c_str());
   packetHandler_ = dynamixel::PacketHandler::getPacketHandler(2.0);
+
+  log_clock_ = std::make_shared<rclcpp::Clock>(RCL_STEADY_TIME);
   return CallbackReturn::SUCCESS;
 }
 
@@ -222,27 +226,8 @@ std::vector<CommandInterface> OMBotArmSystem::export_command_interfaces() {
 }
 
 return_type OMBotArmSystem::read(const rclcpp::Time&, const rclcpp::Duration& period) {
-  // const size_t N = info_.joints.size();
 
-  // if (joint_position_.size() != N || joint_velocity_.size() != N ||
-  //     joint_effort_.size()   != N || joint_position_cmd_.size() != N) {
-  //   RCLCPP_ERROR(rclcpp::get_logger("OMBotArmSystem"),
-  //     "Size mismatch: names=%zu pos=%zu vel=%zu eff=%zu cmd_pos=%zu",
-  //     N, joint_position_.size(), joint_velocity_.size(),
-  //     joint_effort_.size(), joint_position_cmd_.size());
-  //   return hardware_interface::return_type::ERROR;
-  // }
-  // if (ft_states_.size() != 6) {
-  //   RCLCPP_ERROR(rclcpp::get_logger("OMBotArmSystem"),
-  //     "FT array not sized to 6 (got %zu).", ft_states_.size());
-  //   return hardware_interface::return_type::ERROR;
-  // }
-  // if (!simulate_ && ids_.size() != N) {
-  //   RCLCPP_ERROR(rclcpp::get_logger("OMBotArmSystem"),
-  //     "ids_.size() (%zu) != N (%zu).", ids_.size(), N);
-  //   return hardware_interface::return_type::ERROR;
-  // }
-  
+  // auto t_start = std::chrono::steady_clock::now();
   
   const double dt = period.seconds();
 
@@ -272,51 +257,68 @@ return_type OMBotArmSystem::read(const rclcpp::Time&, const rclcpp::Duration& pe
 
 
 // // 2) Parse per ID and convert → SI
+
+
+  const int rc = sync_read_all_->txRxPacket();   // <-- ONCE
+  if (rc != COMM_SUCCESS) { /* warn once/throttle */ }
+
   for (size_t i = 0; i < ids_.size(); ++i) {
     const uint8_t id = ids_[i];
-
-    int32_t raw_pos = 0;
-    int32_t raw_vel = 0;
-    int16_t raw_cur = 0;
-
-    int rc = sync_read_all_->txRxPacket();
-    if (rc != COMM_SUCCESS) {
-      RCLCPP_WARN_THROTTLE(rclcpp::get_logger("OMBotArmSystem"), *clock_, 2000, "sync read rc=%d", rc);
-    }
-    // per-ID:
     if (sync_read_all_->isAvailable(id, 574, 10)) {
-      int16_t raw_cur = static_cast<int16_t>(sync_read_all_->getData(id, 574, 2));
-      int32_t raw_vel    = static_cast<int32_t>(sync_read_all_->getData(id, 576, 4));
-      int32_t raw_pos    = static_cast<int32_t>(sync_read_all_->getData(id, 580, 4));
+      const int16_t raw_cur = (int16_t)sync_read_all_->getData(id, 574, 2);
+      const int32_t raw_vel = (int32_t)sync_read_all_->getData(id, 576, 4);
+      const int32_t raw_pos = (int32_t)sync_read_all_->getData(id, 580, 4);
       joint_position_[i] = pulses_to_rad(raw_pos, pulses_per_rev_[i]);
       joint_velocity_[i] = vel_units_to_rad_s(raw_vel);
-      joint_effort_[i] = current_mA_to_torque(raw_cur, kt_Nm_per_A_[i]);
+      joint_effort_[i]   = current_mA_to_torque(raw_cur, kt_Nm_per_A_[i]);
     }
-
-    // Defaults in case some field is missing this cycle
-
-    bool have_pos = false, have_vel = false, have_cur = false;
-
-    // ---- Convert → SI using your helpers ----
-    // Position: ticks → rad
-    if (have_pos) {
-      const double rad = pulses_to_rad(raw_pos, pulses_per_rev_[i]);
-      joint_position_[i] = std::isfinite(rad) ? rad : joint_position_[i]; // keep last good on NaN/Inf
-    }
-
-    // Velocity: device units → rad/s
-    if (have_vel) {
-      const double rads = vel_units_to_rad_s(raw_vel);
-      joint_velocity_[i] = std::isfinite(rads) ? rads : joint_velocity_[i];
-    }
-
-    // Effort: current (mA or device units) → Nm using per-joint k_t
-    if (have_cur) {
-      const double tau = current_mA_to_torque(raw_cur, kt_Nm_per_A_[i]);
-      joint_effort_[i] = std::isfinite(tau) ? tau : joint_effort_[i];
-    }
-
   }
+  
+  // for (size_t i = 0; i < ids_.size(); ++i) {
+  //   const uint8_t id = ids_[i];
+
+  //   int32_t raw_pos = 0;
+  //   int32_t raw_vel = 0;
+  //   int16_t raw_cur = 0;
+
+  //   int rc = sync_read_all_->txRxPacket();
+  //   if (rc != COMM_SUCCESS) {
+  //     RCLCPP_WARN_THROTTLE(rclcpp::get_logger("OMBotArmSystem"), *clock_, 2000, "sync read rc=%d", rc);
+  //   }
+  //   // per-ID:
+  //   if (sync_read_all_->isAvailable(id, 574, 10)) {
+  //     int16_t raw_cur = static_cast<int16_t>(sync_read_all_->getData(id, 574, 2));
+  //     int32_t raw_vel    = static_cast<int32_t>(sync_read_all_->getData(id, 576, 4));
+  //     int32_t raw_pos    = static_cast<int32_t>(sync_read_all_->getData(id, 580, 4));
+  //     joint_position_[i] = pulses_to_rad(raw_pos, pulses_per_rev_[i]);
+  //     joint_velocity_[i] = vel_units_to_rad_s(raw_vel);
+  //     joint_effort_[i] = current_mA_to_torque(raw_cur, kt_Nm_per_A_[i]);
+  //   }
+
+  //   // Defaults in case some field is missing this cycle
+
+  //   bool have_pos = false, have_vel = false, have_cur = false;
+
+  //   // ---- Convert → SI using your helpers ----
+  //   // Position: ticks → rad
+  //   if (have_pos) {
+  //     const double rad = pulses_to_rad(raw_pos, pulses_per_rev_[i]);
+  //     joint_position_[i] = std::isfinite(rad) ? rad : joint_position_[i]; // keep last good on NaN/Inf
+  //   }
+
+  //   // Velocity: device units → rad/s
+  //   if (have_vel) {
+  //     const double rads = vel_units_to_rad_s(raw_vel);
+  //     joint_velocity_[i] = std::isfinite(rads) ? rads : joint_velocity_[i];
+  //   }
+
+  //   // Effort: current (mA or device units) → Nm using per-joint k_t
+  //   if (have_cur) {
+  //     const double tau = current_mA_to_torque(raw_cur, kt_Nm_per_A_[i]);
+  //     joint_effort_[i] = std::isfinite(tau) ? tau : joint_effort_[i];
+  //   }
+
+  // }
 
   if (!read_ok) {
     // Preserve last values; optionally set hw_connected_=false to failover to fake mode.
@@ -324,29 +326,10 @@ return_type OMBotArmSystem::read(const rclcpp::Time&, const rclcpp::Duration& pe
                          "Read not fully available; keeping last state.");
   }
 
-  // if (gsr_hw_err_->txRxPacket() != COMM_SUCCESS) {
-  //   RCLCPP_WARN(rclcpp::get_logger("OMBotArmSystem"), "GroupSyncRead HW_ERR failed");
-
-  // } else {
-  //   for (uint8_t id : ids_) {
-  //     if (!gsr_hw_err_->isAvailable(id, ADDR_HW_ERR, LEN_HW_ERR)) continue;
-  //     uint8_t hw = gsr_hw_err_->getData(id, ADDR_HW_ERR, LEN_HW_ERR);
-  //     if (hw) {
-  //       // decode & log
-  //       bool v    = hw & (1<<0);
-  //       bool hall = hw & (1<<1);
-  //       bool th   = hw & (1<<2);
-  //       bool enc  = hw & (1<<3);
-  //       bool es   = hw & (1<<4);
-  //       bool ol   = hw & (1<<5);
-  //       RCLCPP_ERROR_THROTTLE(rclcpp::get_logger("OMBotArmSystem"), *clock_, 2000, 
-  //         "DXL ID %u HW_ERROR=0x%02X%s%s%s%s%s%s",
-  //         id, hw,
-  //         v?" [Voltage]":"", hall?" [Hall]":"", th?" [Overheat]":"",
-  //         enc?" [Encoder]":"", es?" [ElecShock]":"", ol?" [Overload]":"");
-  //     }
-  //   }
-  // }
+  // auto t_end = std::chrono::steady_clock::now();
+  // double read_ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+  // RCLCPP_INFO_THROTTLE(rclcpp::get_logger("OMBotHW"), *clock_, 1000,
+  //     "HW read took %.2f ms", read_ms);
 
 
 
@@ -355,6 +338,8 @@ return_type OMBotArmSystem::read(const rclcpp::Time&, const rclcpp::Duration& pe
 
 
 return_type OMBotArmSystem::write(const rclcpp::Time&, const rclcpp::Duration&) {
+  // auto t0 = std::chrono::steady_clock::now();
+
   if (!hw_connected_) {
     // Nothing to push; fake mode just updates state in read()
     // Still clamp commands to limits to keep simulation sane
@@ -434,21 +419,46 @@ return_type OMBotArmSystem::write(const rclcpp::Time&, const rclcpp::Duration&) 
       // }
     }
   }
+  // RCLCPP_INFO_THROTTLE(rclcpp::get_logger("OMBotArmSystem"), *log_clock_, 1000,
+  // "any_effort_mode=%d  modes=[%d %d %d %d %d %d]",
+  // (int)any_effort_mode_, (int)command_mode_[0], (int)command_mode_[1],
+  // (int)command_mode_[2], (int)command_mode_[3], (int)command_mode_[4],
+  // (int)command_mode_[5]);
+
 
   // Effort (current) mode
   if (any_effort_mode_) {
     sync_write_goal_cur_->clearParam();
+
+    // std::ostringstream oss;
+    // oss.setf(std::ios::fixed); oss.precision(3);
+    // oss << "Currents mA: [";
+    // bool first = true;
+
+
     for (size_t i = 0; i < ids_.size(); ++i) {
       if (command_mode_[i] != CommandMode::Effort) continue;
       // Nm -> A -> units
       // const double amps = joint_effort_cmd_[i] / kt_Nm_per_A_[i];
       const int16_t cu  = torque_to_current_mA(joint_effort_cmd_[i], kt_Nm_per_A_[i]);
+      // if (!first) oss << " ";
+      //     first = false;
+      //     oss << cu;
+
       uint8_t param[2] = {
         static_cast<uint8_t>(cu & 0xFF),
         static_cast<uint8_t>((cu >> 8) & 0xFF)
       };
       if (!sync_write_goal_cur_->addParam(ids_[i], param)) ok = false;
     }
+    // oss << "]";
+    // RCLCPP_INFO_THROTTLE(
+    //   rclcpp::get_logger("OMBotArmSystem"),
+    //   *log_clock_, 500,
+    //   "%s", oss.str().c_str()
+    // );
+
+
     if (ok) {
       const int res = sync_write_goal_cur_->txPacket();
       if (res != COMM_SUCCESS) {
@@ -458,7 +468,14 @@ return_type OMBotArmSystem::write(const rclcpp::Time&, const rclcpp::Duration&) 
       }
     }
   }
-
+  // auto t1 = std::chrono::steady_clock::now();
+  // double write_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+  // RCLCPP_INFO_THROTTLE(rclcpp::get_logger("OMBotHW"), *clock_, 1000,
+  //     "HW write took %.2f ms", write_ms);
+  // double loop_ms = std::chrono::duration<double, std::milli>(t1 - t_prev_).count();
+  // t_prev_ = t1;
+  // RCLCPP_INFO_THROTTLE(rclcpp::get_logger("OMBotHW"), *clock_, 1000,
+  //     "Full HW loop = %.2f ms", loop_ms);
   return ok ? return_type::OK : return_type::ERROR;
 }
 

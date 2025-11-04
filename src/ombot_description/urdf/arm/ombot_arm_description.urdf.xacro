@@ -209,6 +209,34 @@
     </inertial>
   </link>
 
+  <!-- Camera body frame mounted to link_6 -->
+  <link name="camera_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.055 0.135 0.03"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+
+  <joint name="camera_mount_joint" type="fixed">
+    <parent link="link_6"/>
+    <!-- Adjust these to your actual bracket offsets on link_6 -->
+    <child link="camera_link"/>
+    <origin xyz="0.08 -0.045 -0.035" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Standard ROS optical frame: z forward, x right, y down (REP 103) -->
+  <link name="camera_optical_frame"/>
+  <joint name="camera_optical_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_optical_frame"/>
+    <!-- This rotation converts a conventional 'camera_link' to an optical frame -->
+    <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679"/>
+  </joint>
+
+
   <!-- Joint 6 -->
   <joint name="joint_6" type="revolute">
     <parent link="link_6"/>

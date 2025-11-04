@@ -20,6 +20,7 @@ find_package(std_srvs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)        
+find_package(orocos_kdl REQUIRED)
 
 add_executable(mecanum_forward_cmd src/mecanum_forward_cmd.cpp)
 ament_target_dependencies(mecanum_forward_cmd rclcpp geometry_msgs)
@@ -30,6 +31,7 @@ add_library(${PROJECT_NAME} SHARED
   src/effort_controller.cpp
   src/gravity_cancel_controller.cpp
   src/joint_impedance_controller.cpp
+  src/resolved_rate_controller.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -38,7 +40,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 ament_target_dependencies(${PROJECT_NAME}
   pluginlib rcpputils controller_interface realtime_tools
-  trajectory_msgs rclcpp rclcpp_lifecycle std_msgs kdl_parser
+  trajectory_msgs rclcpp rclcpp_lifecycle std_msgs kdl_parser orocos_kdl
 )
 target_link_libraries(${PROJECT_NAME} Eigen3::Eigen)
 

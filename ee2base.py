@@ -37,9 +37,9 @@ class EEPoseToBaseVelocity(Node):
         self.ee_pose_init = None
 
         # Start slow: small gains
-        self.kx = -100
-        self.ky = 100
-        self.kz = 100
+        self.kx = -10000
+        self.ky = 10000
+        self.kz = 10000
 
         # Velocity limits
         self.v_lin_max = 3.0

@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <chrono>
+#include <thread>
 
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/handle.hpp"
@@ -72,6 +74,43 @@ public:
     return true;
   }
 
+  std::string query_raw(const std::string &cmd)
+  {
+    if (!driver_ || !driver_->port() || !driver_->port()->is_open()) return "";
+
+    // Send (add CR only if neither '_' nor CR present)
+    std::string tx = cmd;
+    if (!tx.empty() && tx.back() != '_' && tx.back() != '\r') tx.push_back('\r');
+    std::vector<uint8_t> tx_bytes(tx.begin(), tx.end());
+    driver_->port()->send(tx_bytes);  // ignore partial send; we’re in a tight loop
+
+    // Read with a short time budget (~12ms)
+    std::string out;
+    std::vector<uint8_t> buf(64);
+    auto t0 = std::chrono::steady_clock::now();
+    auto budget = std::chrono::milliseconds(12);
+
+    while (std::chrono::steady_clock::now() - t0 < budget) {
+      size_t n = driver_->port()->receive(buf);
+      if (n == 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        continue;
+      }
+      for (size_t i = 0; i < n; ++i) {
+        char c = static_cast<char>(buf[i]);
+        if (c == '_' || c == '\r' || c == '\n') {
+          // trim
+          auto s = out.find_first_not_of(" \r\n");
+          auto e = out.find_last_not_of(" \r\n");
+          return (s == std::string::npos) ? std::string() : out.substr(s, e - s + 1);
+        }
+        out.push_back(c);
+      }
+    }
+    // timeout: return whatever collected (or "")
+    return out;
+  }
+
   // --- convenience commands (ASCII) ---
   // Send a speed command (example: "!G <ch> <value>\r")
   bool write_speed(int ch, double rpm) {
@@ -83,23 +122,34 @@ public:
 
 
   bool read_speed(int ch, double & rpm_out) {
-    (void)rpm_out;
-    std::string q = "?SR " + std::to_string(ch) + "\r";
-    if (!write_raw(q)) return false;
-    std::string resp;
-    if (!read_raw(resp)) return false;
-    return false; // TODO
+    std::string q = "?S " + std::to_string(ch) + "_";
+    std::string resp = query_raw(q);
+    if (resp.empty()) return false;
+    
+    try {
+      rpm_out = std::stod(resp);
+      return true;
+    } catch (...) {
+      RCLCPP_WARN(rclcpp::get_logger("RoboteqIface"),
+                  "Failed to parse speed response '%s' for ch %d", resp.c_str(), ch);
+      return false;
+    }
   }
 
 
-  bool read_encoder(int ch, int64_t & counts_out) {  // int64_t here
-    (void)counts_out;
-    std::string q = "?C " + std::to_string(ch) + "\r";
-    if (!write_raw(q)) return false;
-    std::string resp;
-    if (!read_raw(resp)) return false;
-    // TODO: parse resp -> counts_out
-    return false; // stub
+  bool read_encoder(int ch, int64_t & counts_out) {
+    std::string q = "?C " + std::to_string(ch) + "_";
+    std::string resp = query_raw(q);
+    if (resp.empty()) return false;
+    
+    try {
+      counts_out = static_cast<int64_t>(std::stoll(resp));
+      return true;
+    } catch (...) {
+      RCLCPP_WARN(rclcpp::get_logger("RoboteqIface"),
+                  "Failed to parse encoder response '%s' for ch %d", resp.c_str(), ch);
+      return false;
+    }
   }
 
 
@@ -135,6 +185,10 @@ private:
   double gear_ratio_{1.0};
   double max_wheel_rad_s_{200.0};
   rclcpp::Clock ros_clock_{RCL_STEADY_TIME};  // <-- add this
+  // In OMBotBaseSystem (private:)
+  size_t cycle_counter_{0};
+  size_t pos_update_stride_{10};  // refresh true encoder pos ~every 10 cycles per wheel
+
 
 
   // Joint order: fl, fr, rl, rr
@@ -142,6 +196,7 @@ private:
   std::vector<double> pos_rad_;   // from encoders
   std::vector<double> vel_rad_s_; // from controller speed
   std::vector<double> cmd_rad_s_; // desired velocity
+  std::vector<double> prev_pos_rad_; // for jump detection
 
   // Map joint index -> (controller, channel)
   struct Chan { int ctrl; int ch; }; // ctrl: 1 or 2, ch: 1 or 2
