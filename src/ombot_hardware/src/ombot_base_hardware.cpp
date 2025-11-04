@@ -75,6 +75,7 @@ OMBotBaseSystem::on_init(const hardware_interface::HardwareInfo & info)
   pos_rad_.assign(joint_names_.size(), 0.0);
   vel_rad_s_.assign(joint_names_.size(), 0.0);
   cmd_rad_s_.assign(joint_names_.size(), 0.0);
+  prev_pos_rad_.assign(joint_names_.size(), 0.0);
 
   RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "Initialization OK; wheels=[%s,%s,%s,%s]",
               joint_names_[0].c_str(), joint_names_[1].c_str(),
@@ -153,21 +154,244 @@ OMBotBaseSystem::on_deactivate(const rclcpp_lifecycle::State &)
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
+
+
+// hardware_interface::return_type
+// OMBotBaseSystem::read(const rclcpp::Time & /*stamp*/, const rclcpp::Duration &period)
+// {
+//   const double dt = period.seconds();
+//   for (size_t i = 0; i < 4; ++i) {
+//     const Chan &c = map_[i];
+//     RoboteqIface &dev = (c.ctrl == 1) ? ctrl1_ : ctrl2_;
+
+//     int64_t counts = 0;
+//     double motor_rpm = std::numeric_limits<double>::quiet_NaN();
+
+//     bool ok_enc  = dev.read_encoder(c.ch, counts);     // absolute motor shaft counts
+//     bool ok_rpm  = dev.read_speed(c.ch, motor_rpm);    // motor RPM (shaft)
+//     if (!ok_enc && !ok_rpm) {
+//       RCLCPP_WARN_THROTTLE(
+//         rclcpp::get_logger("OMBotBaseSystem"), ros_clock_, 2000,
+//         "Wheel %zu: neither encoder nor speed available", i);
+//       continue; // keep last states
+//     }
+
+//     // Velocity first (if available)
+//     if (ok_rpm && std::isfinite(motor_rpm)) {
+//       vel_rad_s_[i] = wheelRadPerSec_from_motorRPM(motor_rpm); // includes gear ratio
+//     } // else keep last vel_rad_s_[i]
+
+//     // Position from encoder if available; otherwise integrate velocity
+//     if (ok_enc) {
+//       pos_rad_[i] = wheelRad_from_encoderCounts(counts); // includes counts/rev & gear ratio
+//     } else if (std::isfinite(vel_rad_s_[i]) && dt > 0.0) {
+//       pos_rad_[i] += vel_rad_s_[i] * dt; // fallback so RViz animates
+//     }
+
+//     // Optional sanity clamp for absurd jumps (e.g., serial glitch)
+//     const double max_jump = 50.0; // rad between cycles (tune)
+//     if (std::abs(pos_rad_[i] - prev_pos_rad_[i]) > max_jump) {
+//       RCLCPP_WARN_THROTTLE(
+//         rclcpp::get_logger("OMBotBaseSystem"), ros_clock_, 2000,
+//         "Wheel %zu: position jump %.2f rad -> clamped", i,
+//         pos_rad_[i] - prev_pos_rad_[i]);
+//       pos_rad_[i] = prev_pos_rad_[i];
+//     }
+//     prev_pos_rad_[i] = pos_rad_[i];
+//   }
+//   return hardware_interface::return_type::OK;
+// }
+
+// hardware_interface::return_type
+// OMBotBaseSystem::read(const rclcpp::Time & /*stamp*/, const rclcpp::Duration &period)
+// {
+//   const double dt = period.seconds();
+  
+//   // For now, just integrate velocity to keep the system running
+//   // TODO: Implement actual hardware reads once serial communication is stable
+//   for (size_t i = 0; i < 4; ++i) {
+//     // Keep last velocity or zero
+//     // Integrate position from velocity for visualization
+//     if (std::isfinite(vel_rad_s_[i]) && dt > 0.0) {
+//       pos_rad_[i] += vel_rad_s_[i] * dt;
+//     }
+//   }
+  
+//   return hardware_interface::return_type::OK;
+// }
+
+
+// hardware_interface::return_type
+// OMBotBaseSystem::read(const rclcpp::Time & /*stamp*/, const rclcpp::Duration &period)
+// {
+//   const double dt = period.seconds();
+//   // const double rpm_to_rad_s = 2.0 * M_PI / 60.0; // conversion constant
+
+//   for (size_t i = 0; i < 4; ++i)
+//   {
+//     const Chan &c = map_[i];
+//     RoboteqIface &dev = (c.ctrl == 1) ? ctrl1_ : ctrl2_;
+
+//     // --- Query Roboteq for encoder and speed ---
+//     std::string q_speed = "?S " + std::to_string(c.ch) + "_";
+//     std::string q_pos   = "?C " + std::to_string(c.ch) + "_";
+
+//     std::string resp_speed = dev.query_raw(q_speed);
+//     std::string resp_pos   = dev.query_raw(q_pos);
+
+//     bool ok_rpm = false;
+//     bool ok_enc = false;
+//     double motor_rpm = 0.0;
+//     int64_t counts = 0;
+
+//     // --- Parse responses ---
+//     try {
+//       if (!resp_speed.empty()) {
+//         motor_rpm = std::stod(resp_speed);
+//         ok_rpm = true;
+//       }
+//     } catch (...) {
+//       RCLCPP_WARN_THROTTLE(
+//         rclcpp::get_logger("OMBotBaseSystem"), ros_clock_, 2000,
+//         "Wheel %zu: failed to parse speed response '%s'", i, resp_speed.c_str());
+//     }
+
+//     try {
+//       if (!resp_pos.empty()) {
+//         counts = static_cast<int64_t>(std::stoll(resp_pos));
+//         ok_enc = true;
+//       }
+//     } catch (...) {
+//       RCLCPP_WARN_THROTTLE(
+//         rclcpp::get_logger("OMBotBaseSystem"), ros_clock_, 2000,
+//         "Wheel %zu: failed to parse encoder response '%s'", i, resp_pos.c_str());
+//     }
+
+//     if (!ok_enc && !ok_rpm) {
+//       RCLCPP_WARN_THROTTLE(
+//         rclcpp::get_logger("OMBotBaseSystem"), ros_clock_, 2000,
+//         "Wheel %zu: neither encoder nor speed available", i);
+//       continue; // keep last states
+//     }
+
+//     // --- Convert RPM → rad/s ---
+//     if (ok_rpm && std::isfinite(motor_rpm)) {
+//       vel_rad_s_[i] = wheelRadPerSec_from_motorRPM(motor_rpm); // or simply: motor_rpm * rpm_to_rad_s * gear_ratio
+//     }
+
+//     // --- Position update ---
+//     if (ok_enc) {
+//       pos_rad_[i] = wheelRad_from_encoderCounts(counts); // convert counts → radians (includes CPR & gear ratio)
+//     } else if (std::isfinite(vel_rad_s_[i]) && dt > 0.0) {
+//       pos_rad_[i] += vel_rad_s_[i] * dt; // integrate when encoder not available
+//     }
+
+//     // --- Sanity check for sudden jumps ---
+//     const double max_jump = 50.0;
+//     if (std::abs(pos_rad_[i] - prev_pos_rad_[i]) > max_jump) {
+//       RCLCPP_WARN_THROTTLE(
+//         rclcpp::get_logger("OMBotBaseSystem"), ros_clock_, 2000,
+//         "Wheel %zu: position jump %.2f rad -> clamped", i,
+//         pos_rad_[i] - prev_pos_rad_[i]);
+//       pos_rad_[i] = prev_pos_rad_[i];
+//     }
+
+//     prev_pos_rad_[i] = pos_rad_[i];
+//   }
+
+//   return hardware_interface::return_type::OK;
+// }
+
+// hardware_interface::return_type
+// OMBotBaseSystem::read(const rclcpp::Time&, const rclcpp::Duration& period)
+// {
+//   const double dt = period.seconds();
+//   for (size_t i = 0; i < 4; ++i) {
+//     const Chan &c = map_[i];
+//     RoboteqIface &dev = (c.ctrl == 1) ? ctrl1_ : ctrl2_;
+
+//     // Query ONLY speed (cheap). Position can be added later.
+//     std::string s = dev.query_raw("?S " + std::to_string(c.ch) + "_");
+
+//     bool ok_rpm = false;
+//     double motor_rpm = 0.0;
+//     if (!s.empty()) {
+//       try { motor_rpm = std::stod(s); ok_rpm = true; }
+//       catch (...) { /* keep last */ }
+//     }
+
+//     if (ok_rpm) {
+//       vel_rad_s_[i] = wheelRadPerSec_from_motorRPM(motor_rpm);
+//     }
+//     // Integrate to keep RViz animated if needed
+//     if (std::isfinite(vel_rad_s_[i]) && dt > 0.0) {
+//       pos_rad_[i] += vel_rad_s_[i] * dt;
+//     }
+//   }
+//   return hardware_interface::return_type::OK;
+// }
+
 hardware_interface::return_type
-OMBotBaseSystem::read(const rclcpp::Time &, const rclcpp::Duration &)
+OMBotBaseSystem::read(const rclcpp::Time &, const rclcpp::Duration &period)
 {
-  for (size_t i=0;i<4;i++) {
+  const double dt = period.seconds();
+
+  for (size_t i = 0; i < 4; ++i) {
     const Chan &c = map_[i];
-    RoboteqIface &dev = (c.ctrl==1) ? ctrl1_ : ctrl2_;
-    int64_t counts = 0;
+    RoboteqIface &dev = (c.ctrl == 1) ? ctrl1_ : ctrl2_;
+
+    // --- Always get speed ---
+    std::string s = dev.query_raw("?S " + std::to_string(c.ch) + "_");
+
+    bool ok_rpm = false;
     double motor_rpm = 0.0;
-    (void)dev.read_encoder(c.ch, counts);   // motor shaft counts
-    (void)dev.read_speed(c.ch, motor_rpm);  // motor RPM
-    pos_rad_[i]   = wheelRad_from_encoderCounts(counts);
-    vel_rad_s_[i] = wheelRadPerSec_from_motorRPM(motor_rpm);
+    if (!s.empty()) {
+      try { motor_rpm = std::stod(s); ok_rpm = true; } catch (...) {}
+    }
+    if (ok_rpm) {
+      vel_rad_s_[i] = wheelRadPerSec_from_motorRPM(motor_rpm);  // includes gear ratio inside helper
+    }
+
+    // --- Staggered true position refresh ---
+    // Each wheel refreshes on a different cycle so only 1 wheel (typically) does ?C this tick.
+    const bool do_pos_refresh = (pos_update_stride_ > 0) &&
+                                ((cycle_counter_ + i) % pos_update_stride_ == 0);
+
+    if (do_pos_refresh) {
+      std::string p = dev.query_raw("?C " + std::to_string(c.ch) + "_");
+      if (!p.empty()) {
+        try {
+          const int64_t counts = std::stoll(p);
+          pos_rad_[i] = wheelRad_from_encoderCounts(counts);     // counts → radians (CPR & gear ratio handled inside)
+        } catch (...) {
+          // fallback if parse fails
+          if (std::isfinite(vel_rad_s_[i]) && dt > 0.0) pos_rad_[i] += vel_rad_s_[i] * dt;
+        }
+      } else {
+        // no reply; integrate
+        if (std::isfinite(vel_rad_s_[i]) && dt > 0.0) pos_rad_[i] += vel_rad_s_[i] * dt;
+      }
+    } else {
+      // No refresh this cycle → integrate velocity
+      if (std::isfinite(vel_rad_s_[i]) && dt > 0.0) pos_rad_[i] += vel_rad_s_[i] * dt;
+    }
+
+    // --- Optional sanity clamp for serial glitches ---
+    const double max_jump = 50.0;  // rad
+    if (std::abs(pos_rad_[i] - prev_pos_rad_[i]) > max_jump) {
+      RCLCPP_WARN_THROTTLE(
+        rclcpp::get_logger("OMBotBaseSystem"), ros_clock_, 2000,
+        "Wheel %zu: position jump %.2f rad -> clamped", i, pos_rad_[i] - prev_pos_rad_[i]);
+      pos_rad_[i] = prev_pos_rad_[i];
+    }
+    prev_pos_rad_[i] = pos_rad_[i];
   }
+
+  ++cycle_counter_;
   return hardware_interface::return_type::OK;
 }
+
+
 
 hardware_interface::return_type
 OMBotBaseSystem::write(const rclcpp::Time &, const rclcpp::Duration &)
@@ -188,12 +412,6 @@ OMBotBaseSystem::write(const rclcpp::Time &, const rclcpp::Duration &)
     ctrl2_.write_raw(payload_back);
   }
 
-  // Optional: one-line summary
-  // RCLCPP_INFO_THROTTLE(
-  //   rclcpp::get_logger("OMBotBaseSystem"), ros_clock_, 1000,
-  //   "cmd wheel(rad/s): [%.2f %.2f %.2f %.2f]",
-  //   cmd_rad_s_[0], cmd_rad_s_[1], cmd_rad_s_[2], cmd_rad_s_[3]
-  // );
 
   return hardware_interface::return_type::OK;
 }

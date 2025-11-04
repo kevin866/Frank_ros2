@@ -5,6 +5,7 @@
 #include <vector>
 #include <optional>
 
+#include "controller_interface/chainable_controller_interface.hpp"
 #include "controller_interface/controller_interface.hpp"
 #include "hardware_interface/loaned_command_interface.hpp"
 #include "hardware_interface/loaned_state_interface.hpp"
@@ -13,6 +14,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "realtime_tools/realtime_publisher.hpp"
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
+#include "pluginlib/class_list_macros.hpp"
 
 #include "realtime_tools/realtime_buffer.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
@@ -54,7 +56,7 @@ namespace ombot_controller
  *       name[] must match 'joints' order (or be empty -> assumes order),
  *       position[], velocity[], effort[] used as q_d, dq_d, tau_ff respectively (each optional).
  */
-class JointImpedanceController : public controller_interface::ControllerInterface
+class JointImpedanceController : public controller_interface::ChainableControllerInterface
 {
 public:
   JointImpedanceController();
@@ -69,14 +71,29 @@ public:
   controller_interface::CallbackReturn on_configure(const rclcpp_lifecycle::State &) override;
   controller_interface::CallbackReturn on_activate(const rclcpp_lifecycle::State &) override;
   controller_interface::CallbackReturn on_deactivate(const rclcpp_lifecycle::State &) override;
+  // controller_interface::return_type update(const rclcpp::Time &, const rclcpp::Duration &) override;
+  std::vector<hardware_interface::CommandInterface> on_export_reference_interfaces() override;
+  // controller_interface::InterfaceConfiguration reference_interface_configuration() const override;
 
-  controller_interface::return_type
-  update(const rclcpp::Time &, const rclcpp::Duration &) override;
+  bool on_set_chained_mode(bool chained) override;  // exact match
+
+protected:
+  controller_interface::return_type update_reference_from_subscribers() override;
+
+  controller_interface::return_type update_and_write_commands(
+      const rclcpp::Time &, const rclcpp::Duration &) override;
+
 
 private:
   // --- publishing end-effector pose (optional) ---
   bool publish_ee_pose_{true};                 // param: enable/disable
   std::string ee_pose_topic_{"/ee_pose"};      // param: topic name
+
+  // inside class JointImpedanceController
+  bool have_external_refs_{false};
+  std::vector<const hardware_interface::LoanedCommandInterface*> pos_ref_ifaces_;
+  std::vector<const hardware_interface::LoanedCommandInterface*> vel_ref_ifaces_;
+
 
   // realtime publisher (OK to call from update() with trylock)
   std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::msg::PoseStamped>> ee_pub_;
@@ -106,6 +123,11 @@ private:
   std::vector<double> dq_filt_;         // for LPF if needed
   std::vector<double> last_q_;          // for numerical velocity if velocity state is absent
   bool have_velocity_state_{false};
+  // Feedforward cache from subscriber stage (only used when not chained)
+  std::vector<double> tau_ff_cache_, zero_ff_cache_;
+  bool chained_mode_{false};  // true when controller is chained to an upstream controller
+
+
 
   // Desired command buffer (real-time safe)
   struct Desired
@@ -140,6 +162,18 @@ private:
   };
   realtime_tools::RealtimeBuffer<TrajRT> traj_rt_;
   TrajRT traj_shadow_;
+  std::vector<const double *> ref_position_ptrs_;
+  std::vector<const double *> ref_velocity_ptrs_;
+  // bool has_imported_refs_{false};
+
+  std::vector<double> qd_int_;     // integrated reference position
+  std::vector<double> dqd_cmd_;    // filtered/clamped incoming ref velocity
+  double ref_step_limit_{0.01};    // max |Δq| per cycle (rad)
+  double ref_qdot_limit_{2.0};     // max |qdot| (rad/s)
+  double ref_vel_alpha_{0.6};      // 0..1, LPF on incoming velocity
+  bool   last_chained_{false};     // detect chained-mode transitions
+  double ref_deadband_{1e-4}; // rad/s
+
 
   // ----- helpers -----
   void command_cb(const sensor_msgs::msg::JointState::SharedPtr msg);

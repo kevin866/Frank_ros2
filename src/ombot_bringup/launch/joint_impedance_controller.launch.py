@@ -95,6 +95,7 @@ def generate_launch_description():
         executable="spawner",
         arguments=["joint_impedance_controller", "-c", "/controller_manager"],
         output="screen",
+        
     )
 
     # Start order: controller_manager + RSP come up, then spawn JSB, then impedance controller, then RViz.

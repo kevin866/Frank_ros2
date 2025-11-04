@@ -1,81 +1,54 @@
-# Copyright 2023 ros2_control Development Team
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
+# view_robot.launch.py
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.parameter_descriptions import ParameterValue
 
-
 def generate_launch_description():
-    # Declare arguments
-    declared_arguments = []
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            "gui",
-            default_value="true",
-            description="Start Rviz2 and Joint State Publisher gui automatically \
-        with this launch file.",
-        )
-    )
-    # Initialize Arguments
-    gui = LaunchConfiguration("gui")
+    declared_arguments = [
+        DeclareLaunchArgument("start_rviz", default_value="false",
+                              description="Start RViz2."),
+        DeclareLaunchArgument("start_jsp_gui", default_value="false",
+                              description="Start joint_state_publisher_gui."),
+        DeclareLaunchArgument("description_pkg", default_value="ombot_description",
+                              description="Package containing the URDF/xacro and meshes."),
+        DeclareLaunchArgument("xacro_path", default_value="urdf/ombot.urdf.xacro",
+                              description="Relative path to the xacro inside description_pkg."),
+        DeclareLaunchArgument("rviz_rel_path", default_value="ombot/rviz/view_robot.rviz",
+                              description="Relative path to RViz config inside description_pkg."),
+    ]
 
-    # # Get URDF via xacro
-    # robot_description_content = Command(
-    #     [
-    #         PathJoinSubstitution([FindExecutable(name="xacro")]),
-    #         " ",
-    #         PathJoinSubstitution(
-    #             [
-    #                 FindPackageShare("ombot_description"),
-    #                 "urdf",
-    #                 "ombot.urdf.xacro",
-    #             ]
-    #         ),
-    #     ]
-    # )
+    start_rviz = LaunchConfiguration("start_rviz")
+    start_jsp_gui = LaunchConfiguration("start_jsp_gui")
+    description_pkg = LaunchConfiguration("description_pkg")
+    xacro_path = LaunchConfiguration("xacro_path")
+    rviz_rel_path = LaunchConfiguration("rviz_rel_path")
 
-
-    # robot_description = {"robot_description": robot_description_content}
-
-
-
-
-    # Xacro -> string robot_description
-    urdf_file = PathJoinSubstitution([
-        FindPackageShare("ombot_description"), "urdf", "ombot.urdf.xacro"
-    ])
-
+    urdf_file = PathJoinSubstitution([FindPackageShare(description_pkg), xacro_path])
     robot_description_content = Command([FindExecutable(name="xacro"), " ", urdf_file])
+    robot_description = {"robot_description": ParameterValue(robot_description_content, value_type=str)}
 
-    robot_description = {
-        "robot_description": ParameterValue(robot_description_content, value_type=str)
-    }
+    rviz_config_file = PathJoinSubstitution([FindPackageShare(description_pkg), rviz_rel_path])
 
-
-    rviz_config_file = PathJoinSubstitution(
-        [FindPackageShare("ombot_description"), "ombot/rviz", "view_robot.rviz"]
-    )
-
-    joint_state_publisher_node = Node(
+    # GUI sliders (only if requested)
+    joint_state_publisher_gui_node = Node(
         package="joint_state_publisher_gui",
         executable="joint_state_publisher_gui",
-        condition=IfCondition(gui),
+        condition=IfCondition(start_jsp_gui),
+    )
+
+    # Headless joint state publisher (publishes zeros by default)
+    joint_state_publisher_headless_node = Node(
+        package="joint_state_publisher",
+        executable="joint_state_publisher",
+        parameters=[{
+            "rate": 50.0,
+            "publish_default_positions": False  # <- key: publishes zero for each non-fixed joint from URDF
+        }],
+        condition=UnlessCondition(start_jsp_gui),  # run headless when GUI is off
     )
 
     robot_state_publisher_node = Node(
@@ -83,24 +56,20 @@ def generate_launch_description():
         executable="robot_state_publisher",
         output="both",
         parameters=[robot_description],
-        # arguments=['--ros-args', '--log-level', 'debug']  # Add this line
     )
-    
+
     rviz_node = Node(
         package="rviz2",
         executable="rviz2",
         name="rviz2",
         output="log",
         arguments=["-d", rviz_config_file],
-        condition=IfCondition(gui),
+        condition=IfCondition(start_rviz),
     )
 
-    #
-    nodes_to_start = [
-        joint_state_publisher_node,
+    return LaunchDescription(declared_arguments + [
+        joint_state_publisher_gui_node,
+        joint_state_publisher_headless_node,
         robot_state_publisher_node,
         rviz_node,
-    ]
-
-    return LaunchDescription(declared_arguments + nodes_to_start)
-
+    ])

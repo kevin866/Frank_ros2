@@ -160,6 +160,10 @@ private:
 
   bool simulate_{true};
   bool serial_ok_{false};
+  // static rclcpp::Clock g_steady_clock(RCL_STEADY_TIME);
+  rclcpp::Clock::SharedPtr log_clock_;
+
+
 
 };
 

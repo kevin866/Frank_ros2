@@ -12,8 +12,8 @@ public:
   EeToBase() : Node("ee_to_base") {
     // Params
     use_stamped_out_  = declare_parameter("use_stamped_out", true);  // true -> TwistStamped
-    kp_lin_           = declare_parameter("kp_lin", 0.4);            // m/s per meter
-    kp_yaw_           = declare_parameter("kp_yaw", 1.0);            // rad/s per rad
+    kp_lin_           = declare_parameter("kp_lin", 1000.0);            // m/s per meter
+    kp_yaw_           = declare_parameter("kp_yaw", 10.0);            // rad/s per rad
     vmax_             = declare_parameter("vmax", 0.5);              // m/s
     wmax_             = declare_parameter("wmax", 1.0);              // rad/s
     alpha_            = declare_parameter("lpf_alpha", 0.4);         // 0..1

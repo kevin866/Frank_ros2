@@ -35,6 +35,45 @@ JointImpedanceController::state_interface_configuration() const
   return conf;
 }
 
+std::vector<hardware_interface::CommandInterface>
+JointImpedanceController::on_export_reference_interfaces()
+{
+  const size_t N = joint_names_.size();
+  reference_interfaces_.assign(2 * N, 0.0);
+
+  std::vector<hardware_interface::CommandInterface> refs;
+  refs.reserve(2 * N);
+
+  // const std::string ctrl = "joint_impedance_controller";
+  const std::string ctrl = get_node()->get_name();  // ✅ instance-safe
+
+
+  for (size_t i = 0; i < N; ++i) {
+    const auto &joint = joint_names_[i];
+
+    // Swap: resource=controller_name, interface=joint/signal
+    refs.emplace_back(ctrl, joint + "/position", &reference_interfaces_[i]);
+    refs.emplace_back(ctrl, joint + "/velocity", &reference_interfaces_[N + i]);
+  }
+
+  // Optional: log for sanity
+  for (auto &ci : refs) {
+    RCLCPP_INFO(get_node()->get_logger(), "Exported ref: %s/%s",
+                ci.get_name().c_str(), ci.get_interface_name().c_str());
+  }
+  return refs;
+}
+
+
+bool JointImpedanceController::on_set_chained_mode(bool chained)
+{
+  // We always command hardware efforts; record whether we should read upstream refs.
+  chained_mode_ = chained;
+  RCLCPP_INFO(get_node()->get_logger(), "Chained mode %s", chained ? "enabled" : "disabled");
+  return true;
+}
+
+
 controller_interface::CallbackReturn JointImpedanceController::on_init()
 {
   try {
@@ -48,9 +87,15 @@ controller_interface::CallbackReturn JointImpedanceController::on_init()
     auto_declare<std::string>("tip_link", "");
     auto_declare<std::string>("robot_description", "");
     auto_declare<double>("vel_lpf_alpha", 1.0);  // 1.0 = no filtering
+    auto_declare<std::string>("upstream_controller", "resolved_rate_controller"); // set to actual instance name
 
     auto_declare<bool>("publish_ee_pose", true);              // enable/disable
     auto_declare<std::string>("ee_pose_topic", "/ee_pose");   // topic name
+
+    auto_declare<double>("ref_step_limit", 0.01);
+    auto_declare<double>("ref_qdot_limit", 2.0);
+    auto_declare<double>("ref_vel_alpha",  0.6);
+
 
   } catch (const std::exception &e) {
     RCLCPP_ERROR(get_node()->get_logger(), "on_init exception: %s", e.what());
@@ -197,6 +242,16 @@ JointImpedanceController::on_activate(const rclcpp_lifecycle::State &)
   for (auto & ci : command_interfaces_) ci.set_value(0.0);
 
   const size_t N = joint_names_.size();
+  
+  bool have_refs = (reference_interfaces_.size() == 2*N);
+  if (have_refs) {
+    RCLCPP_INFO(get_node()->get_logger(),
+      "Impedance: found %zu reference interfaces (position_ref + velocity_ref).", 2*N);
+  } else {
+    RCLCPP_INFO(get_node()->get_logger(),
+      "Impedance: no reference interfaces found, will use ~/command or ~/trajectory.");
+  }
+
   // Read initial q & dq (if velocity interfaces provided they come after positions)
   if (state_interfaces_.size() == N * 2) {
     have_velocity_state_ = true;
@@ -211,6 +266,16 @@ JointImpedanceController::on_activate(const rclcpp_lifecycle::State &)
       dq_[i] = 0.0;
     }
   }
+
+  qd_int_.resize(N);
+  dqd_cmd_.assign(N, 0.0);
+
+  // Start the integrator at the measured joint angles
+  for (size_t i = 0; i < N; ++i) {
+    qd_int_[i] = q_[i];  // your measured joint positions
+  }
+  last_chained_ = this->chained_mode_; // or your flag
+
   dq_filt_ = dq_;
   last_q_  = q_;
 
@@ -223,6 +288,14 @@ JointImpedanceController::on_activate(const rclcpp_lifecycle::State &)
   desired_shadow_.has_dqd = true;
   desired_shadow_.has_tau_ff = false;
   desired_rt_.writeFromNonRT(desired_shadow_);
+
+  // NEW: Pre-fill chained references with current state so we don't jump to zeros
+  if (reference_interfaces_.size() == 2 * N) {
+    for (size_t i = 0; i < N; ++i) {
+      reference_interfaces_[i]      = q_[i];   // desired position = current
+      reference_interfaces_[N + i]  = 0.0;     // desired velocity = 0
+    }
+  }
 
   if (publish_ee_pose_ && fk_solver_) {
     // 1) set frame_id once
@@ -351,7 +424,7 @@ void JointImpedanceController::traj_cb(const trajectory_msgs::msg::JointTrajecto
   // Build segments with boundary conditions (use zeros if not provided)
   TrajRT plan;
   plan.segs.clear();
-  auto get = [&](auto &vec, size_t j, size_t k, double def)->double{
+  auto get = [&](auto &vec, size_t /*j*/, size_t k, double def)->double{
     const auto &v = vec; if (v.empty()) return def;
     if (k>=v.size()) return def; // ROS <humble> sanity
     return v[k];
@@ -497,10 +570,49 @@ void JointImpedanceController::maybe_filter_velocity(double /*dt*/)
 }
 
 controller_interface::return_type
-JointImpedanceController::update(const rclcpp::Time & time, const rclcpp::Duration & period)
+JointImpedanceController::update_reference_from_subscribers()
+{
+  const size_t N = joint_names_.size();
+
+  // 1) If you have a trajectory generator, try it first
+  std::vector<double> qd_ref, dqd_ref, qdd_ref;
+  const double t_ctrl = this->get_node()->get_clock()->now().seconds();
+  eval_traj(t_ctrl, qd_ref, dqd_ref, qdd_ref);
+
+  // 2) Fallback: your existing Desired RT buffer (~/command)
+  std::vector<double> tau_ff(N, 0.0);
+  if (qd_ref.empty()) {
+    Desired d = *(desired_rt_.readFromRT());
+    if (!d.has_qd)    { d.qd   = q_;              d.has_qd   = true; }
+    if (!d.has_dqd)   { d.dqd.assign(N, 0.0);     d.has_dqd  = true; }
+    if (!d.has_tau_ff){ d.tau_ff.assign(N, 0.0);  d.has_tau_ff = true; }
+    qd_ref  = d.qd;
+    dqd_ref = d.dqd;
+    tau_ff  = d.tau_ff;  // keep if you use feedforward in stage B (store in a member if needed)
+  }
+  // 3) If you have external reference interfaces, override the references
+  if (reference_interfaces_.size() == 2 * N) {
+    for (size_t i = 0; i < N; ++i) {
+      qd_ref[i]  = reference_interfaces_[i];
+      dqd_ref[i] = reference_interfaces_[N + i];
+    }
+  }
+
+  // If you want tau_ff in stage B, cache it in a member (e.g., tau_ff_cache_)
+  tau_ff_cache_ = std::move(tau_ff);
+
+  return controller_interface::return_type::OK;
+}
+
+
+
+controller_interface::return_type
+JointImpedanceController::update_and_write_commands(
+    const rclcpp::Time & time, const rclcpp::Duration & period)
 {
   const size_t N = joint_names_.size();
   const double dt = period.seconds();
+  // dt_ = period.seconds();   // store for integration
 
   // Validate interfaces
   if (state_interfaces_.size() != N * 2 || command_interfaces_.size() != N) {
@@ -510,84 +622,110 @@ JointImpedanceController::update(const rclcpp::Time & time, const rclcpp::Durati
     return controller_interface::return_type::ERROR;
   }
 
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(), *get_node()->get_clock(), 1000,
+  //   "JIC dt=%.6f s (%.1f Hz)", dt, dt > 1e-6 ? 1.0/dt : 0.0);
+
+
   // Read state
   for (size_t i = 0; i < N; ++i) {
     q_[i]  = state_interfaces_[i].get_value();
     dq_[i] = state_interfaces_[N + i].get_value();
   }
+  maybe_filter_velocity(dt);  // fills dq_filt_
 
-  maybe_filter_velocity(dt);  // dq_filt_ updated
-
-  // --- reference generation ---
+  // --- references: chain refs > trajectory > ~/command > hold ---
   std::vector<double> qd_ref, dqd_ref, qdd_ref;
-  const double t_ctrl = time.seconds();
-  eval_traj(t_ctrl, qd_ref, dqd_ref, qdd_ref);
+  std::vector<double> tau_ff(N, 0.0);
 
+  if (chained_mode_ && reference_interfaces_.size() == 2 * N) {
+    last_chained_ = false;  // so we rebase next time we re-enter chained mode
+    const size_t N = joint_names_.size();
+    qd_ref.resize(N);
+    dqd_ref.resize(N);
 
+    // Detect chained-mode edge and rebase integrator once
+    if (!last_chained_) {
+      for (size_t i = 0; i < N; ++i) qd_int_[i] = q_[i];
+    }
+    last_chained_ = true;
 
-  // If no trajectory was sent, fall back to ~/command (your existing Desired RT buffer):
-  // Desired command (real-time safe)
-  Desired d = *(desired_rt_.readFromRT());
-  std::vector<double> tau_ff(N, 0.0);  // default zero feedforward
+    // 1) Read upstream refs: prefer velocity; position is optional
+    for (size_t i = 0; i < N; ++i) {
+      // const double qdot_in  = reference_interfaces_[N + i];   // <upstream>/<joint>/velocity
+      // Optional: if you also want to honor upstream position when present:
+      const double qpos_in = reference_interfaces_[i];
+      const double qdot_in  = reference_interfaces_[N + i];
+      const double qdot_c  = std::clamp(qdot_in, -ref_qdot_limit_, ref_qdot_limit_);
+      qd_ref[i]  = qpos_in;         // track upstream position directly
+      dqd_ref[i] = qdot_c;          // use upstream velocity for damping
+    }
 
-  // Fallback only if no trajectory is active
-  if (qd_ref.empty()) {
-    // Desired d = *(desired_rt_.readFromRT());
+    last_chained_ = true;           // (no internal integrator state to manage)
 
-    if (!d.has_qd)   { d.qd   = q_;              d.has_qd   = true; }
-    if (!d.has_dqd)  { d.dqd.assign(N, 0.0);     d.has_dqd  = true; }
-    if (!d.has_tau_ff){ d.tau_ff.assign(N, 0.0); d.has_tau_ff = true; }
+  } else {
+    last_chained_ = false;  // so we rebase next time we re-enter chained mode
+    // Try trajectory
+    eval_traj(time.seconds(), qd_ref, dqd_ref, qdd_ref);
 
-    qd_ref  = d.qd;
-    dqd_ref = d.dqd;
-    qdd_ref.assign(N, 0.0);
+    // Fallback to ~/command (Desired RT buffer)
+    if (qd_ref.empty()) {
+      Desired d = *(desired_rt_.readFromRT());
+      if (!d.has_qd)     { d.qd   = q_; }
+      if (!d.has_dqd)    { d.dqd.assign(N, 0.0); }
+      if (!d.has_tau_ff) { d.tau_ff.assign(N, 0.0); }
+      qd_ref  = std::move(d.qd);
+      dqd_ref = std::move(d.dqd);
+      tau_ff  = std::move(d.tau_ff);
+    }
 
-    // (Optional) keep a local copy of tau_ff if you use it below
-    // Use feedforward only in fallback mode
-    if (d.has_tau_ff) tau_ff = d.tau_ff;
+    // Final safe fallback: hold
+    if (qd_ref.empty()) {
+      qd_ref = q_;
+      dqd_ref.assign(N, 0.0);
+    }
   }
 
   // Gravity feedforward
   std::vector<double> tau_g;
-  compute_gravity(q_, tau_g);
+  if (use_gravity_) compute_gravity(q_, tau_g);
 
+  // PD impedance + ff (+ gravity)
   for (size_t i = 0; i < N; ++i) {
     const double e_pos = qd_ref[i]  - q_[i];
     const double e_vel = dqd_ref[i] - dq_filt_[i];
-    double tau = kp_[i]*e_pos + kd_[i]*e_vel + tau_ff[i];
-    if (use_gravity_) tau += tau_g[i];
+    double tau = kp_[i] * e_pos + kd_[i] * e_vel + tau_ff[i];
+    if (use_gravity_ && tau_g.size() == N) tau += tau_g[i];
     tau_cmd_[i] = tau;
   }
 
   // Clamp & write
   clamp_effort(tau_cmd_);
-  for (size_t i = 0; i < N; ++i){
+  for (size_t i = 0; i < N; ++i) {
     command_interfaces_[i].set_value(tau_cmd_[i]);
-    // RCLCPP_INFO_STREAM(get_node()->get_logger(),
-    //   "Joint " << joint_names_[i] << " command = " << tau_cmd_[i]);
-  } 
+  }
+  // Debug: log torques every ~1s
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(), *get_node()->get_clock(), 1000,
+  //   "Cmd torques: [%.3f %.3f %.3f %.3f %.3f %.3f]",
+  //   tau_cmd_[0], tau_cmd_[1], tau_cmd_[2],
+  //   tau_cmd_[3], tau_cmd_[4], tau_cmd_[5]);
 
+  // (Optional) EE pose publisher
   if (publish_ee_pose_ && fk_solver_) {
     for (size_t i = 0; i < N; ++i) q_kdl_(i) = q_[i];
-
     KDL::Frame T;
     if (fk_solver_->JntToCart(q_kdl_, T) >= 0) {
       if (ee_pub_ && ee_pub_->trylock()) {
         auto & msg = ee_pub_->msg_;
-        msg.header.stamp = time;           // use controller-provided time
-        msg.header.frame_id = base_link_;  // fixed parent frame
-
+        msg.header.stamp = time;
+        msg.header.frame_id = base_link_;
         msg.pose.position.x = T.p.x();
         msg.pose.position.y = T.p.y();
         msg.pose.position.z = T.p.z();
-
-        double x, y, z, w;
-        T.M.GetQuaternion(x, y, z, w);
-        msg.pose.orientation.x = x;
-        msg.pose.orientation.y = y;
-        msg.pose.orientation.z = z;
-        msg.pose.orientation.w = w;
-
+        double x, y, z, w; T.M.GetQuaternion(x, y, z, w);
+        msg.pose.orientation.x = x; msg.pose.orientation.y = y;
+        msg.pose.orientation.z = z; msg.pose.orientation.w = w;
         ee_pub_->unlockAndPublish();
       }
     }
@@ -595,9 +733,7 @@ JointImpedanceController::update(const rclcpp::Time & time, const rclcpp::Durati
 
   return controller_interface::return_type::OK;
 }
-
-
-
+// ...existing code...
 
 // helper: build one quintic between (q0,v0,a0) and (q1,v1,a1) over T
 std::array<double,6> JointImpedanceController::quintic_coeff(
@@ -622,4 +758,4 @@ std::array<double,6> JointImpedanceController::quintic_coeff(
 
 PLUGINLIB_EXPORT_CLASS(
   ombot_controller::JointImpedanceController,
-  controller_interface::ControllerInterface)
+  controller_interface::ChainableControllerInterface)
