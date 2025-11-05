@@ -1,0 +1,27 @@
+Robot: OMBot Arm (ROS 2 Humble)
+Date: 2025-11-04
+
+Controllers:
+- ResolvedRateController (RRC)
+- JointImpedanceController (JIC)
+
+RMW:
+- Switched to CycloneDDS (rmw_cyclonedds_cpp) to fix Fast CDR deserialization spam.
+
+== BEFORE ==
+RRC dt ≈ 0.096 s  (~10.4 Hz)
+JIC dt ≈ 0.096 s  (~10.4 Hz)
+HW read: ~95.8 ms   HW write: ~0.04 ms
+Behavior: stop-and-go in null mode, mid-motion stalls.
+
+== AFTER (bulk read improvements) ==
+RRC dt ≈ 0.016 s  (~62.5 Hz)
+JIC dt ≈ 0.016 s  (~62.5 Hz)
+HW read: ~15.9 ms   HW write: ~0.04 ms
+Behavior: smooth, no mid-motion stops.
+
+== NEXT GOAL (for 200–250 Hz) ==
+Target HW read ≤ 3–4 ms:
+- GroupSyncRead / Indirect addressing (one read per cycle)
+- Baudrate ≥ 3 Mbps (Pro/X); USB latency_timer = 1 ms
+- Read only pos/current each cycle; move diagnostics to 1–2 Hz
