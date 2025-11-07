@@ -1,0 +1,29 @@
+/vrpn_mocap/RigidBody_1/pose:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 1
+
+/vrpn_mocap/RigidBody_2/pose:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 1
+
+/mecanum_controller/reference:
+  reliability: reliable
+  durability: volatile
+  history: keep_last
+  depth: 10
+
+/resolved_rate_controller/ee_twist:
+  reliability: reliable
+  durability: volatile
+  history: keep_last
+  depth: 10
+
+/goal_pose:
+  reliability: reliable
+  durability: volatile
+  history: keep_last
+  depth: 10

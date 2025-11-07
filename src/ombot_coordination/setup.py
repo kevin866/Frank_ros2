@@ -18,7 +18,7 @@ setup(
     entry_points={
         'console_scripts': [
             'arm_base_coordinator = ombot_coordination.arm_base_coordinator:main',
-            'goal_from_base_offset = ombot_coordination.goal_from_base_offset:main',
+            'goal_from_base_offset_latched = ombot_coordination.goal_from_base_offset_latched:main',
             'base_p_on_x = ombot_coordination.base_p_on_x:main',
             'arm_zero_twist = ombot_coordination.arm_zero_twist:main',
             'set_null_kp = ombot_coordination.set_null_kp:main',

@@ -377,7 +377,7 @@ OMBotBaseSystem::read(const rclcpp::Time &, const rclcpp::Duration &period)
     }
 
     // --- Optional sanity clamp for serial glitches ---
-    const double max_jump = 50.0;  // rad
+    const double max_jump = 100.0;  // rad
     if (std::abs(pos_rad_[i] - prev_pos_rad_[i]) > max_jump) {
       RCLCPP_WARN_THROTTLE(
         rclcpp::get_logger("OMBotBaseSystem"), ros_clock_, 2000,
