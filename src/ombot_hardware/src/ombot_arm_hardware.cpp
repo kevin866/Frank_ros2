@@ -459,14 +459,14 @@ return_type OMBotArmSystem::write(const rclcpp::Time&, const rclcpp::Duration&) 
     // );
 
 
-    if (ok) {
-      const int res = sync_write_goal_cur_->txPacket();
-      if (res != COMM_SUCCESS) {
-        RCLCPP_WARN(rclcpp::get_logger("OMBotArmSystem"),
-                    "sync write goal current failed: %s", packetHandler_->getTxRxResult(res));
-        ok = false;
-      }
-    }
+    // if (ok) {
+    //   const int res = sync_write_goal_cur_->txPacket();
+    //   if (res != COMM_SUCCESS) {
+    //     RCLCPP_WARN(rclcpp::get_logger("OMBotArmSystem"),
+    //                 "sync write goal current failed: %s", packetHandler_->getTxRxResult(res));
+    //     ok = false;
+    //   }
+    // }
   }
   // auto t1 = std::chrono::steady_clock::now();
   // double write_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();

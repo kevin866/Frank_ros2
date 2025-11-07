@@ -20,6 +20,11 @@ def generate_launch_description():
             default_value="false",
             description="If true, activate impedance controller as 'chained'.",
         ),
+        DeclareLaunchArgument("offset_x", default_value="-0.5",
+            description="World-frame x offset for goal (meters, negative = behind base)"),
+        DeclareLaunchArgument("base_is_holonomic", default_value="true",
+            description="If true, coordinator uses vx, vy, wz for mecanum"),
+
     ]
 
     gui = LaunchConfiguration("gui")

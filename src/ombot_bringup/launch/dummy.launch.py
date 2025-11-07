@@ -1,149 +1,162 @@
-# save as: ombot_bringup/launch/test_chainable_controllers.launch.py
+# bringup_with_bag.launch.py
 from launch import LaunchDescription
-from launch.actions import RegisterEventHandler, DeclareLaunchArgument
-from launch.conditions import IfCondition
-from launch.event_handlers import OnProcessExit
-from launch.substitutions import (
-    Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration,
+from launch.actions import (
+    DeclareLaunchArgument, TimerAction, ExecuteProcess,
+    RegisterEventHandler, Shutdown
 )
+from launch.event_handlers import OnProcessExit
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command, FindExecutable, PythonExpression
+from launch.conditions import IfCondition, UnlessCondition
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from launch_ros.substitutions import FindPackageShare
-
+from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
-    # --- Args ---
-    declared_arguments = [
-        DeclareLaunchArgument(
-            "gui", default_value="false",
-            description="Start RViz2."
-        ),
-        DeclareLaunchArgument(
-            "controllers_yaml",
-            default_value=PathJoinSubstitution([
-                FindPackageShare("ombot_bringup"), "config", "ombot_controller.yaml"
-            ]),
-            description="YAML containing resolved_rate_controller and joint_impedance_controller"
-        ),
-        DeclareLaunchArgument(
-            "chained",
-            default_value="true",
-            description="Start impedance controller in chained mode (use upstream refs).",
-        ),
-    ]
+    # ---- Arguments (defaults set ONLY here) ----
+    use_sim_time = LaunchConfiguration('use_sim_time')
+    bag_prefix   = LaunchConfiguration('bag_prefix')
+    storage      = LaunchConfiguration('storage')
+    compress     = LaunchConfiguration('compress')
+    qos_path     = LaunchConfiguration('qos_overrides')
+    split_size   = LaunchConfiguration('max_bag_size')
+    split_secs   = LaunchConfiguration('max_bag_secs')
 
-    gui = LaunchConfiguration("gui")
-    controllers_yaml = LaunchConfiguration("controllers_yaml")
-    chained = LaunchConfiguration("chained")
-
-
-    # --- URDF via xacro -> robot_description (XML string) ---
+    # ---- Robot description ----
+    urdf_file = PathJoinSubstitution([
+        get_package_share_directory('ombot_description'),
+        'urdf', 'ombot.urdf.xacro'
+    ])
     robot_description_content = ParameterValue(
-        Command([
-            PathJoinSubstitution([FindExecutable(name="xacro")]), " ",
-            PathJoinSubstitution([
-                FindPackageShare("ombot_description"), "urdf", "arm", "ombot_arm.urdf.xacro"
-            ]),
-            " ",
-            "robot_name:=ombot"
-        ]),
+        Command([PathJoinSubstitution([FindExecutable(name='xacro')]), ' ', urdf_file]),
         value_type=str
     )
-    robot_description = {"robot_description": robot_description_content}
 
-    # --- Core nodes ---
-    control_node = Node(
-        package="controller_manager",
-        executable="ros2_control_node",
-        parameters=[robot_description, controllers_yaml],
-        output="both",
-        # arguments=["--ros-args", "--log-level", "controller_manager:=info"],
+    # ---- Core nodes ----
+    robot_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        parameters=[{'use_sim_time': use_sim_time, 'robot_description': robot_description_content}],
+        output='screen'
     )
 
-    rsp_node = Node(
-        package="robot_state_publisher",
-        executable="robot_state_publisher",
-        parameters=[robot_description],
-        output="both",
-    )
-
-    # --- Spawners ---
-    jsb_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["joint_state_broadcaster", "-c", "/controller_manager", "--activate"],
-        output="screen",
-    )
-
-    # IMPORTANT: match these names to your YAML controller keys
-    rr_name = "resolved_rate_controller"
-    imp_name = "joint_impedance_controller"
-
-    # imp_spawner = Node(
-    #     package="controller_manager",
-    #     executable="spawner",
-    #     arguments=[imp_name, "-c", "/controller_manager", "--activate"],
-    #     output="screen",
-    # )
-
-
-    imp_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=[
-            imp_name,
-            "-c", "/controller_manager",
-            "--activate-as", "chained",
-        ],
-        output="screen",
-        condition=IfCondition(chained),
-    )
-
-    rr_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=[rr_name, "-c", "/controller_manager", "--activate"],
-        output="screen",
-    )
-
-    # --- RViz (optional) ---
-    rviz_config = PathJoinSubstitution([
-        FindPackageShare("ombot_description"), "ombot", "rviz", "view_robot.rviz"
+    ctrl_yaml = PathJoinSubstitution([
+        get_package_share_directory('ombot_bringup'),
+        'config', 'ombot_controller.yaml'
     ])
-    rviz_node = Node(
-        package="rviz2", executable="rviz2", name="rviz2",
-        arguments=["-d", rviz_config], condition=IfCondition(gui), output="screen"
+    control_node = Node(
+        package='controller_manager',
+        executable='ros2_control_node',
+        parameters=[{'robot_description': robot_description_content}, ctrl_yaml],
+        output='screen'
     )
 
-    # --- Order: JSB → Impedance (consumer) → ResolvedRate (producer) → RViz ---
-    after_jsb_start_imp = RegisterEventHandler(
-        OnProcessExit(
-            target_action=jsb_spawner,
-            on_exit=[imp_spawner],
-        )
-    )
-    after_imp_start_rr = RegisterEventHandler(
-        OnProcessExit(
-            target_action=imp_spawner,
-            on_exit=[rr_spawner],
-        )
-    )
-    after_rr_start_rviz = RegisterEventHandler(
-        OnProcessExit(
-            target_action=rr_spawner,
-            on_exit=[rviz_node],
-        )
+    mecanum_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['mecanum_controller', '-c', '/controller_manager'],
+        output='screen'
     )
 
-    nodes = [
-        control_node,
-        rsp_node,
-        jsb_spawner,
-        imp_spawner,
-        # rr_spawner,
-        # rviz_node,
-        # after_jsb_start_imp,
-        after_imp_start_rr,
-        after_rr_start_rviz,
+    # ---- Coordination test nodes ----
+    goal_from_offset = Node(
+        package='ombot_coordination',
+        executable='goal_from_base_offset_latched',
+        name='goal_from_offset',
+        parameters=[{'offset_x': 1.5, 'publish_rate_hz': 20.0, 'mode': 'latch'}],
+        # remappings can be omitted if identical
+        output='screen',
+        respawn=True
+    )
+
+    base_p_on_x = Node(
+        package='ombot_coordination',
+        executable='base_p_on_x',
+        parameters=[{'kx': 3.0, 'vmax': 5.0, 'flip_forward': False}],
+        output='screen'
+    )
+
+    arm_zero_twist = Node(
+        package='ombot_coordination',
+        executable='arm_zero_twist',
+        name='arm_zero_twist',
+        output='screen'
+    )
+
+    start_tests = TimerAction(period=2.0, actions=[goal_from_offset, base_p_on_x, arm_zero_twist])
+
+    # ---- rosbag2 recorder: your 5 topics ----
+    topics_to_record = [
+        '/goal_pose',
+        '/mecanum_controller/reference',
+        '/resolved_rate_controller/ee_twist',
+        '/vrpn_mocap/RigidBody_1/pose',
+        '/vrpn_mocap/RigidBody_2/pose',
     ]
-    return LaunchDescription(declared_arguments + nodes)
+
+    # Run when qos_overrides == '' (no QoS file)
+    bag_record_no_qos = ExecuteProcess(
+        condition=UnlessCondition(
+            PythonExpression(["'", qos_path, "' != ''"])
+        ),
+        cmd=[
+            'ros2', 'bag', 'record',
+            *topics_to_record,
+            '--output', bag_prefix,
+            '--storage', storage,
+            '--compression-mode', 'file',
+            '--compression-format', compress,
+            '--max-bag-size', split_size,
+            '--max-bag-duration', split_secs,
+        ],
+        output='screen'
+    )
+
+    # Run when qos_overrides != '' (QoS file provided)
+    bag_record_with_qos = ExecuteProcess(
+        condition=IfCondition(
+            PythonExpression(["'", qos_path, "' != ''"])
+        ),
+        cmd=[
+            'ros2', 'bag', 'record',
+            *topics_to_record,
+            '--output', bag_prefix,
+            '--storage', storage,
+            '--compression-mode', 'file',
+            '--compression-format', compress,
+            '--max-bag-size', split_size,
+            '--max-bag-duration', split_secs,
+            '--qos-profile-overrides-path', qos_path,
+        ],
+        output='screen'
+    )
+
+    delayed_bag_no_qos   = TimerAction(period=0.5, actions=[bag_record_no_qos])
+    delayed_bag_with_qos = TimerAction(period=0.5, actions=[bag_record_with_qos])
+
+    # Optional: end launch when ros2_control_node exits
+    end_when_control_exits = RegisterEventHandler(
+        OnProcessExit(target_action=control_node, on_exit=[Shutdown(reason='ros2_control_node exited')])
+    )
+
+    return LaunchDescription([
+        # ----- Declare args with baked-in defaults -----
+        DeclareLaunchArgument('use_sim_time', default_value='false'),
+        DeclareLaunchArgument('bag_prefix',   default_value='my_test_run'),
+        DeclareLaunchArgument('storage',      default_value='sqlite3'),
+        DeclareLaunchArgument('compress',     default_value='zstd'),
+        DeclareLaunchArgument('qos_overrides', default_value='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'),
+        DeclareLaunchArgument('max_bag_size', default_value=str(1024*1024*1024)),
+        DeclareLaunchArgument('max_bag_secs', default_value='600'),
+
+        # ----- Nodes -----
+        robot_state_publisher,
+        control_node,
+        mecanum_spawner,
+        start_tests,
+
+        # ----- Recorder (one of these runs depending on qos_overrides) -----
+        delayed_bag_no_qos,
+        delayed_bag_with_qos,
+
+        end_when_control_exits,
+    ])
