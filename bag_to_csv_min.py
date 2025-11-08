@@ -5,7 +5,7 @@ from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 
 # Folder that CONTAINS my_test_run_0.db3 (not the .db3 file itself)
-BAG_DIR = '/home/frank/frank_ws/my_test_run'
+BAG_DIR = '/home/frank/frank_ws/ombot_run'
 
 topics = [
     '/mecanum_controller/reference',

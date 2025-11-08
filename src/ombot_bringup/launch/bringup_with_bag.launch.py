@@ -62,7 +62,7 @@ def generate_launch_description():
         executable='goal_from_base_offset_latched',
         name='goal_from_offset',
         parameters=[{
-            'offset_x': 2.0,
+            'offset_x': 0.5,
             'publish_rate_hz': 20.0,
             'mode': 'latch'
         }],
