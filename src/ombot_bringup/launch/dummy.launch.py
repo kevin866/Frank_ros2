@@ -1,162 +1,105 @@
-# bringup_with_bag.launch.py
 from launch import LaunchDescription
-from launch.actions import (
-    DeclareLaunchArgument, TimerAction, ExecuteProcess,
-    RegisterEventHandler, Shutdown
-)
-from launch.event_handlers import OnProcessExit
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command, FindExecutable, PythonExpression
-from launch.conditions import IfCondition, UnlessCondition
+from launch.actions import DeclareLaunchArgument, TimerAction
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command, FindExecutable
+from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
-    # ---- Arguments (defaults set ONLY here) ----
-    use_sim_time = LaunchConfiguration('use_sim_time')
-    bag_prefix   = LaunchConfiguration('bag_prefix')
-    storage      = LaunchConfiguration('storage')
-    compress     = LaunchConfiguration('compress')
-    qos_path     = LaunchConfiguration('qos_overrides')
-    split_size   = LaunchConfiguration('max_bag_size')
-    split_secs   = LaunchConfiguration('max_bag_secs')
+    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
 
-    # ---- Robot description ----
+    # Combined URDF (base + arm)
     urdf_file = PathJoinSubstitution([
-        get_package_share_directory('ombot_description'),
-        'urdf', 'ombot.urdf.xacro'
+        get_package_share_directory('ombot_description'), 'urdf', 'ombot.urdf.xacro'
     ])
     robot_description_content = ParameterValue(
         Command([PathJoinSubstitution([FindExecutable(name='xacro')]), ' ', urdf_file]),
         value_type=str
     )
 
-    # ---- Core nodes ----
-    robot_state_publisher = Node(
-        package='robot_state_publisher',
-        executable='robot_state_publisher',
+    # Core bringup
+    rsp = Node(
+        package='robot_state_publisher', executable='robot_state_publisher',
         parameters=[{'use_sim_time': use_sim_time, 'robot_description': robot_description_content}],
         output='screen'
     )
-
     ctrl_yaml = PathJoinSubstitution([
-        get_package_share_directory('ombot_bringup'),
-        'config', 'ombot_controller.yaml'
+        get_package_share_directory('ombot_bringup'), 'config', 'ombot_controller.yaml'
     ])
-    control_node = Node(
-        package='controller_manager',
-        executable='ros2_control_node',
+    control = Node(
+        package='controller_manager', executable='ros2_control_node',
         parameters=[{'robot_description': robot_description_content}, ctrl_yaml],
         output='screen'
     )
 
-    mecanum_spawner = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=['mecanum_controller', '-c', '/controller_manager'],
-        output='screen'
-    )
+    # Spawners
+    jsb = Node(package='controller_manager', executable='spawner',
+               arguments=['joint_state_broadcaster', '-c', '/controller_manager', '--activate'],
+               output='screen')
+    imp = Node(package='controller_manager', executable='spawner',
+               arguments=['joint_impedance_controller', '-c', '/controller_manager', '--activate'],
+               output='screen')
+    rr  = Node(package='controller_manager', executable='spawner',
+               arguments=['resolved_rate_controller', '-c', '/controller_manager', '--activate'],
+               output='screen')
+    mec = Node(package='controller_manager', executable='spawner',
+               arguments=['mecanum_controller', '-c', '/controller_manager'],
+               output='screen')
 
-    # ---- Coordination test nodes ----
-    goal_from_offset = Node(
-        package='ombot_coordination',
-        executable='goal_from_base_offset_latched',
-        name='goal_from_offset',
-        parameters=[{'offset_x': 1.5, 'publish_rate_hz': 20.0, 'mode': 'latch'}],
-        # remappings can be omitted if identical
-        output='screen',
-        respawn=True
-    )
+    # Arm+Base coordinator — now drives BOTH base and arm with internal XYZ offset goal
+    coordinator = Node(
+        package='ombot_coordination', executable='arm_base_coordinator',
+        name='arm_base_coordinator',
+        parameters=[
+            # Frames & inputs
+            {'inputs_in_world': True},                   # OptiTrack/world frame
+            {'world_frame_name': 'world'},
+            {'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose'},
+            {'ee_pose_topic':   '/vrpn_mocap/RigidBody_2/pose'},
 
-    base_p_on_x = Node(
-        package='ombot_coordination',
-        executable='base_p_on_x',
-        parameters=[{'kx': 3.0, 'vmax': 5.0, 'flip_forward': False}],
-        output='screen'
-    )
+            # Internal offset-goal (no /goal_pose needed)
+            {'use_offset_goal': True},
+            {'offset_frame': 'base'},                    # 'base' (relative to base heading) or 'world'
+            {'offset_xyz': [0.5, 0.0, 0.0]},            # change offset here (x,y,z) meters
 
-    arm_zero_twist = Node(
-        package='ombot_coordination',
-        executable='arm_zero_twist',
-        name='arm_zero_twist',
-        output='screen'
-    )
+            # Command topics
+            {'ee_twist_topic': '/resolved_rate_controller/ee_twist'},  # arm twist
+            {'cmd_vel_topic':  '/cmd_vel'},                             # base twist
 
-    start_tests = TimerAction(period=2.0, actions=[goal_from_offset, base_p_on_x, arm_zero_twist])
+            # Base model
+            {'base_is_holonomic': False},               # True if fully holonomic; False for diff-drive
+            {'k_heading': 1.5},
 
-    # ---- rosbag2 recorder: your 5 topics ----
-    topics_to_record = [
-        '/goal_pose',
-        '/mecanum_controller/reference',
-        '/resolved_rate_controller/ee_twist',
-        '/vrpn_mocap/RigidBody_1/pose',
-        '/vrpn_mocap/RigidBody_2/pose',
-    ]
+            # Gains & limits
+            {'kp_lin': 1.2}, {'kd_lin': 0.3},
+            {'kp_ang': 1.0}, {'kd_ang': 0.25},
+            {'k_ori_weight': 0.5},
+            {'ee_lin_limit': 0.15}, {'ee_ang_limit': 0.6},
+            {'base_lin_limit': 0.30}, {'base_ang_limit': 0.80},
 
-    # Run when qos_overrides == '' (no QoS file)
-    bag_record_no_qos = ExecuteProcess(
-        condition=UnlessCondition(
-            PythonExpression(["'", qos_path, "' != ''"])
-        ),
-        cmd=[
-            'ros2', 'bag', 'record',
-            *topics_to_record,
-            '--output', bag_prefix,
-            '--storage', storage,
-            '--compression-mode', 'file',
-            '--compression-format', compress,
-            '--max-bag-size', split_size,
-            '--max-bag-duration', split_secs,
+            # Blending & retract
+            {'blend_mid_distance': 0.8}, {'blend_slope': 6.0},
+            {'max_reach': 0.8},
+            {'d_retract_enter': 0.25}, {'d_retract_exit': 0.35},
+
+            # Filtering/slew
+            {'vel_lpf_alpha': 0.6},
+            {'slew_base': 1.0},
+            {'slew_arm_lin': 0.5},
+            {'slew_arm_ang': 1.5},
+
+            # Mocap marker → base (adjust if needed; keep π flips in params, not code)
+            {'base_marker_offset_xyz': [0.0, 0.0, 0.0]},
+            {'base_marker_offset_rpy': [0.0, 0.0, 0.0]},
         ],
         output='screen'
     )
 
-    # Run when qos_overrides != '' (QoS file provided)
-    bag_record_with_qos = ExecuteProcess(
-        condition=IfCondition(
-            PythonExpression(["'", qos_path, "' != ''"])
-        ),
-        cmd=[
-            'ros2', 'bag', 'record',
-            *topics_to_record,
-            '--output', bag_prefix,
-            '--storage', storage,
-            '--compression-mode', 'file',
-            '--compression-format', compress,
-            '--max-bag-size', split_size,
-            '--max-bag-duration', split_secs,
-            '--qos-profile-overrides-path', qos_path,
-        ],
-        output='screen'
-    )
-
-    delayed_bag_no_qos   = TimerAction(period=0.5, actions=[bag_record_no_qos])
-    delayed_bag_with_qos = TimerAction(period=0.5, actions=[bag_record_with_qos])
-
-    # Optional: end launch when ros2_control_node exits
-    end_when_control_exits = RegisterEventHandler(
-        OnProcessExit(target_action=control_node, on_exit=[Shutdown(reason='ros2_control_node exited')])
-    )
+    # Start coordinator a bit after controllers come up
+    start_after_ctrl = TimerAction(period=2.0, actions=[coordinator])
 
     return LaunchDescription([
-        # ----- Declare args with baked-in defaults -----
         DeclareLaunchArgument('use_sim_time', default_value='false'),
-        DeclareLaunchArgument('bag_prefix',   default_value='my_test_run'),
-        DeclareLaunchArgument('storage',      default_value='sqlite3'),
-        DeclareLaunchArgument('compress',     default_value='zstd'),
-        DeclareLaunchArgument('qos_overrides', default_value='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'),
-        DeclareLaunchArgument('max_bag_size', default_value=str(1024*1024*1024)),
-        DeclareLaunchArgument('max_bag_secs', default_value='600'),
-
-        # ----- Nodes -----
-        robot_state_publisher,
-        control_node,
-        mecanum_spawner,
-        start_tests,
-
-        # ----- Recorder (one of these runs depending on qos_overrides) -----
-        delayed_bag_no_qos,
-        delayed_bag_with_qos,
-
-        end_when_control_exits,
+        rsp, control, jsb, imp, rr, mec,
+        start_after_ctrl
     ])

@@ -6,7 +6,7 @@ from typing import Tuple
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
-from geometry_msgs.msg import PoseStamped, TwistStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped, Twist
 import numpy as np
 
 def clamp(x: float, lo: float, hi: float) -> float: return max(lo, min(hi, x))
@@ -93,8 +93,7 @@ class ArmBaseCoordinator(Node):
         self.base_marker_offset_xyz = list(self.declare_parameter('base_marker_offset_xyz', [0.0,0.0,0.0]).get_parameter_value().double_array_value)
         self.base_marker_offset_rpy = list(self.declare_parameter('base_marker_offset_rpy', [0.0,0.0,0.0]).get_parameter_value().double_array_value)
         self.ee_twist_topic  = self.declare_parameter('ee_twist_topic','/resolved_rate_controller/ee_twist').get_parameter_value().string_value
-        # self.cmd_vel_topic   = self.declare_parameter('cmd_vel_topic', '/cmd_vel').get_parameter_value().string_value
-        self.cmd_vel_topic   = self.declare_parameter('cmd_vel_topic', '/mecanum_controller/reference').get_parameter_value().string_value
+        self.cmd_vel_topic   = self.declare_parameter('cmd_vel_topic', '/cmd_vel').get_parameter_value().string_value
 
         self.kp_lin = self.declare_parameter('kp_lin', 1.2).get_parameter_value().double_value
         self.kd_lin = self.declare_parameter('kd_lin', 0.3).get_parameter_value().double_value
@@ -111,10 +110,10 @@ class ArmBaseCoordinator(Node):
 
         self.ee_lin_lim  = self.declare_parameter('ee_lin_limit', 0.15).get_parameter_value().double_value
         self.ee_ang_lim  = self.declare_parameter('ee_ang_limit', 0.6).get_parameter_value().double_value
-        self.base_lin_lim= self.declare_parameter('base_lin_limit', 5.0).get_parameter_value().double_value
+        self.base_lin_lim= self.declare_parameter('base_lin_limit', 0.30).get_parameter_value().double_value
         self.base_ang_lim= self.declare_parameter('base_ang_limit', 0.80).get_parameter_value().double_value
 
-        self.base_is_holonomic = self.declare_parameter('base_is_holonomic', True).get_parameter_value().bool_value
+        self.base_is_holonomic = self.declare_parameter('base_is_holonomic', False).get_parameter_value().bool_value
         self.k_heading = self.declare_parameter('k_heading', 1.5).get_parameter_value().double_value
 
         alpha_v = self.declare_parameter('vel_lpf_alpha', 0.6).get_parameter_value().double_value
@@ -141,8 +140,7 @@ class ArmBaseCoordinator(Node):
         self.sub_base = self.create_subscription(PoseStamped, self.base_pose_topic, self.on_base, mocap_qos)
 
         self.pub_ee_twist = self.create_publisher(TwistStamped, self.ee_twist_topic, 10)
-        # self.pub_cmd_vel  = self.create_publisher(Twist, self.cmd_vel_topic, 10)
-        self.pub_cmd_vel  = self.create_publisher(TwistStamped, self.cmd_vel_topic, 10)
+        self.pub_cmd_vel  = self.create_publisher(Twist, self.cmd_vel_topic, 10)
 
         # Filters & slew
         self.lpf_base_vx = LPF(alpha_v); self.lpf_base_vy = LPF(alpha_v); self.lpf_base_wz = LPF(alpha_v)
@@ -354,21 +352,8 @@ class ArmBaseCoordinator(Node):
             b_wz = 0.0
 
         # 7) Publish
-        # twb = Twist(); twb.linear.x=float(b_vx); twb.linear.y=float(b_vy); twb.angular.z=float(b_wz)
-        # self.pub_cmd_vel.publish(twb)
-        # --- new: TwistStamped for mecanum_controller/reference ---
-        twb = TwistStamped()
-        twb.header.stamp = now.to_msg()
-        # pick a frame_id that your controller expects; 'world' is common if you're feeding world-frame refs
-        twb.header.frame_id = 'world' if self.inputs_in_world else 'base'
-        twb.twist.linear.x  = float(b_vx)
-        twb.twist.linear.y  = float(b_vy)
-        twb.twist.linear.z  = 0.0
-        twb.twist.angular.x = 0.0
-        twb.twist.angular.y = 0.0
-        twb.twist.angular.z = float(b_wz)
+        twb = Twist(); twb.linear.x=float(b_vx); twb.linear.y=float(b_vy); twb.angular.z=float(b_wz)
         self.pub_cmd_vel.publish(twb)
-
 
         twa = TwistStamped(); twa.header.stamp = now.to_msg()
         twa.header.frame_id = 'link_1'

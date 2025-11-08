@@ -58,13 +58,13 @@ def generate_launch_description():
         executable='goal_from_base_offset_latched',   # <-- match your setup.py entry point
         name='goal_from_offset',
         parameters=[{
-            'offset_x': -2.0,            # meters
+            'offset_x': -0.5,            # meters
             'publish_rate_hz': 20.0,     # republish goal with fresh timestamps
             'mode': 'latch'              # default behavior (one-shot latch)
         }],
         # RigidBody_1 is the base mocap topic, RigidBody_2 would be the arm if needed.
         remappings=[
-            ('/vrpn_mocap/RigidBody_1/pose', '/vrpn_mocap/RigidBody_1/pose'),  # base
+            ('/vrpn_mocap/RigidBody_1/pose', '/vrpn_mocap/RigidBody_2/pose'),  # base
             ('/goal_pose', '/goal_pose'),
         ],
         output='screen',

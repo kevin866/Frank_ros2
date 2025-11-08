@@ -121,3 +121,18 @@ wheel_velocity_controller:
     interface_name: velocity
 
 
+arm_base_coordinator:
+  ros__parameters:
+    kp_lin: 3.0
+    kp_ang: 2.0
+    kd_lin: 0.3
+    kd_ang: 0.25
+
+    base_lin_limit: 0.6
+    base_ang_limit: 1.2
+
+    vel_lpf_alpha: 0.9
+    slew_base: 4.0
+
+    k_d: 3.0
+    d_mid: 1.8
