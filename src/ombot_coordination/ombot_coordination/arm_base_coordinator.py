@@ -92,6 +92,8 @@ class ArmBaseCoordinator(Node):
         self.inputs_in_world = self.declare_parameter('inputs_in_world', True).get_parameter_value().bool_value
         self.base_marker_offset_xyz = list(self.declare_parameter('base_marker_offset_xyz', [0.0,0.0,0.0]).get_parameter_value().double_array_value)
         self.base_marker_offset_rpy = list(self.declare_parameter('base_marker_offset_rpy', [0.0,0.0,0.0]).get_parameter_value().double_array_value)
+        self.marker_yaw_flip = self.declare_parameter(
+            'marker_yaw_flip', True).get_parameter_value().bool_value  # apply +π yaw if mocap marker faces backward
         self.ee_twist_topic  = self.declare_parameter('ee_twist_topic','/resolved_rate_controller/ee_twist').get_parameter_value().string_value
         # self.cmd_vel_topic   = self.declare_parameter('cmd_vel_topic', '/cmd_vel').get_parameter_value().string_value
         self.cmd_vel_topic   = self.declare_parameter('cmd_vel_topic', '/mecanum_controller/reference').get_parameter_value().string_value
@@ -116,6 +118,8 @@ class ArmBaseCoordinator(Node):
 
         self.base_is_holonomic = self.declare_parameter('base_is_holonomic', True).get_parameter_value().bool_value
         self.k_heading = self.declare_parameter('k_heading', 1.5).get_parameter_value().double_value
+        self.base_cmd_scale = self.declare_parameter('base_cmd_scale', 500.0).get_parameter_value().double_value
+        self.base_cmd_sat_distance = self.declare_parameter('base_cmd_sat_distance', 0.5).get_parameter_value().double_value
 
         alpha_v = self.declare_parameter('vel_lpf_alpha', 0.6).get_parameter_value().double_value
         slew_base   = self.declare_parameter('slew_base',    1.0).get_parameter_value().double_value
@@ -161,6 +165,7 @@ class ArmBaseCoordinator(Node):
         self.slew_arm_ang_z = SlewLimiter(slew_arm_ang)
 
         self.timer = self.create_timer(0.01, self.spin)  # 100 Hz
+        self._last_R_wb = np.eye(3)
         self.get_logger().info('ArmBaseCoordinator (offset-goal capable) ready.')
 
     # --- Callbacks ---
@@ -232,13 +237,19 @@ class ArmBaseCoordinator(Node):
             qb = (self.base.pose.orientation.x, self.base.pose.orientation.y, self.base.pose.orientation.z, self.base.pose.orientation.w)
             qe = (self.ee.pose.orientation.x,   self.ee.pose.orientation.y,   self.ee.pose.orientation.z,   self.ee.pose.orientation.w)
             qg = (self.goal.pose.orientation.x, self.goal.pose.orientation.y, self.goal.pose.orientation.z, self.goal.pose.orientation.w)
-
+            
+            # R_wm = rotation from World → Marker (the coordinate system OptiTrack reports)
             R_wm = rotmat_from_quat(*qb)
+            # Translation offset (in meters) from the mocap marker origin to the robot's base origin,
+            # expressed in the marker's local coordinates.
             t_mb = np.array(self.base_marker_offset_xyz, dtype=float)
-            R_mb = rotmat_from_rpy(*self.base_marker_offset_rpy)   # no hidden +π; put it in params if needed
+            R_mb = rotmat_from_rpy(*self.base_marker_offset_rpy)
+            if self.marker_yaw_flip:
+                R_mb = rotmat_from_rpy(0.0, 0.0, math.pi) @ R_mb
             R_wb = R_wm @ R_mb
             pb = pb + R_wm @ t_mb
             R_bw = R_wb.T
+            self._last_R_wb = R_wb
 
             p_be = R_bw @ (pe - pb)
             p_bg = R_bw @ (pg - pb)
@@ -265,20 +276,22 @@ class ArmBaseCoordinator(Node):
         edot = raw_edot  # (optional: add LPFs if needed)
 
         # 2) Task-space PD
-        vx =  self.kp_lin * e6[0] - self.kd_lin * edot[0]
-        vy =  self.kp_lin * e6[1] - self.kd_lin * edot[1]
-        vz =  self.kp_lin * e6[2] - self.kd_lin * edot[2]
-        wx =  self.kp_ang * e6[3] - self.kd_ang * edot[3]
-        wy =  self.kp_ang * e6[4] - self.kd_ang * edot[4]
-        wz =  self.kp_ang * e6[5] - self.kd_ang * edot[5]
+        vx_task =  self.kp_lin * e6[0] - self.kd_lin * edot[0]
+        vy_task =  self.kp_lin * e6[1] - self.kd_lin * edot[1]
+        vz_task =  self.kp_lin * e6[2] - self.kd_lin * edot[2]
+        wx_task =  self.kp_ang * e6[3] - self.kd_ang * edot[3]
+        wy_task =  self.kp_ang * e6[4] - self.kd_ang * edot[4]
+        wz_task =  self.kp_ang * e6[5] - self.kd_ang * edot[5]
 
         def clamp_vec3(x,y,z,lim):
             n = math.sqrt(x*x+y*y+z*z)
             if n > lim and n > 1e-9:
                 s = lim/n; return x*s, y*s, z*s
             return x,y,z
-        vx,vy,vz = clamp_vec3(vx,vy,vz,self.ee_lin_lim)
-        wx,wy,wz = clamp_vec3(wx,wy,wz,self.ee_ang_lim)
+        vx_l,vy_l,vz_l = clamp_vec3(vx_task,vy_task,vz_task,self.ee_lin_lim)
+        wx_l,wy_l,wz_l = clamp_vec3(wx_task,wy_task,wz_task,self.ee_ang_lim)
+
+        e_xy = math.hypot(e6[0], e6[1])
 
         # 3) Blend α
         dx = self.goal.pose.position.x - self.base.pose.position.x
@@ -298,8 +311,14 @@ class ArmBaseCoordinator(Node):
         if d_base_xy < self.d_retract_enter: self.retract_mode = True
         elif d_base_xy > self.d_retract_exit: self.retract_mode = False
 
+        if self.base_cmd_sat_distance > 0.0:
+            scale_alpha = clamp(e_xy / max(self.base_cmd_sat_distance, 1e-6), 0.0, 1.0)
+        else:
+            scale_alpha = 1.0
+        base_scale = 1.0 + scale_alpha * (self.base_cmd_scale - 1.0)
+
         # 5) Base allocation
-        b_vx, b_vy, b_wz = alpha * vx, alpha * vy, alpha * wz
+        b_vx, b_vy, b_wz = alpha * vx_task, alpha * vy_task, alpha * wz_task
         if not self.base_is_holonomic:
             speed = math.hypot(b_vx, b_vy)
             qb = (self.base.pose.orientation.x, self.base.pose.orientation.y,
@@ -313,8 +332,8 @@ class ArmBaseCoordinator(Node):
             b_wz = clamp(b_wz + w_heading, -self.base_ang_lim, self.base_ang_lim)
 
         # 5b) Arm allocation
-        arm_vx, arm_vy, arm_vz = (1.0 - alpha) * vx, (1.0 - alpha) * vy, (1.0 - alpha) * vz
-        arm_wx, arm_wy, arm_wz = (1.0 - alpha) * wx, (1.0 - alpha) * wy, (1.0 - alpha) * wz
+        arm_vx, arm_vy, arm_vz = (1.0 - alpha) * vx_l, (1.0 - alpha) * vy_l, (1.0 - alpha) * vz_l
+        arm_wx, arm_wy, arm_wz = (1.0 - alpha) * wx_l, (1.0 - alpha) * wy_l, (1.0 - alpha) * wz_l
 
         # Retract overrides
         if self.retract_mode:
@@ -326,6 +345,9 @@ class ArmBaseCoordinator(Node):
         b_vx = self.lpf_base_vx.step(self.slew_base_vx.step(b_vx, dt))
         b_vy = self.lpf_base_vy.step(self.slew_base_vy.step(b_vy, dt))
         b_wz = self.lpf_base_wz.step(self.slew_base_wz.step(b_wz, dt))
+        b_vx *= base_scale
+        b_vy *= base_scale
+        b_wz *= base_scale
         b_lin = math.hypot(b_vx,b_vy)
         if b_lin > self.base_lin_lim and b_lin > 1e-9:
             s = self.base_lin_lim / b_lin; b_vx *= s; b_vy *= s
@@ -346,7 +368,6 @@ class ArmBaseCoordinator(Node):
         arm_wz = clamp(arm_wz, -self.ee_ang_lim, self.ee_ang_lim)
 
         # 6.5) Global stop window
-        e_xy = math.hypot(e6[0], e6[1])
         if e_xy < 0.03 and abs(e6[2]) < 0.03:
             arm_vx = arm_vy = arm_vz = 0.0
             arm_wx = arm_wy = arm_wz = 0.0
@@ -359,10 +380,17 @@ class ArmBaseCoordinator(Node):
         # --- new: TwistStamped for mecanum_controller/reference ---
         twb = TwistStamped()
         twb.header.stamp = now.to_msg()
-        # pick a frame_id that your controller expects; 'world' is common if you're feeding world-frame refs
-        twb.header.frame_id = 'world' if self.inputs_in_world else 'base'
-        twb.twist.linear.x  = float(b_vx)
-        twb.twist.linear.y  = float(b_vy)
+        # Publish in the frame the downstream controller expects.
+        if self.inputs_in_world:
+            v_world = self._last_R_wb @ np.array([b_vx, b_vy, 0.0])
+            cmd_vx, cmd_vy = v_world[0], v_world[1]
+            cmd_frame = 'world'
+        else:
+            cmd_vx, cmd_vy = b_vx, b_vy
+            cmd_frame = 'base'
+        twb.header.frame_id = cmd_frame
+        twb.twist.linear.x  = float(cmd_vx)
+        twb.twist.linear.y  = float(cmd_vy)
         twb.twist.linear.z  = 0.0
         twb.twist.angular.x = 0.0
         twb.twist.angular.y = 0.0

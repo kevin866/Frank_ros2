@@ -93,8 +93,8 @@ def generate_launch_description():
             'ee_pose_topic':   '/vrpn_mocap/RigidBody_2/pose',
 
             'use_offset_goal': True,
-            'offset_frame': 'base',
-            'offset_xyz': [1.5, 0.0, 0.0],
+            'offset_frame': 'world',
+            'offset_xyz': [-1.0, 0.0, 0.0],
 
             'ee_twist_topic': '/resolved_rate_controller/ee_twist',
 
@@ -107,7 +107,7 @@ def generate_launch_description():
             'kp_ang': 2.0, 'kd_ang': 0.25,
             'k_ori_weight': 0.5,
             'ee_lin_limit': 0.15, 'ee_ang_limit': 0.6,
-            'base_lin_limit': 0.6, 'base_ang_limit': 1.2,
+            'base_lin_limit': 5.0, 'base_ang_limit': 1.2,
             'blend_mid_distance': 0.8, 'blend_slope': 6.0,
             'max_reach': 0.8,
             'd_retract_enter': 0.25, 'd_retract_exit': 0.35,
@@ -119,6 +119,8 @@ def generate_launch_description():
             'base_marker_offset_rpy': [0.0, 0.0, 0.0],
             'k_d': 3.0,
             'd_mid': 1.80,
+            'base_cmd_scale': 500.0,
+            'base_cmd_sat_distance': 0.8,
         }]
     )
 
