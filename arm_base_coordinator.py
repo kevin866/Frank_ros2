@@ -261,7 +261,7 @@ class ArmBaseCoordinator(Node):
             R_wm = rotmat_from_quat(*qb)
             t_mb = np.array(self.base_marker_offset_xyz, dtype=float)
             # R_mb = rotmat_from_rpy(*self.base_marker_offset_rpy)
-            R_mb = rotmat_from_rpy(0.0, 0.0, math.pi) @ rotmat_from_rpy(*self.base_marker_offset_rpy)
+            R_mb = rotmat_from_rpy(*self.base_marker_offset_rpy)
             R_wb = R_wm @ R_mb
             pb = pb + R_wm @ t_mb
             R_bw = R_wb.T

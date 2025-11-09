@@ -1,4 +1,5 @@
 # bringup_with_bag.launch.py
+import math
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument, TimerAction, ExecuteProcess,
@@ -94,12 +95,15 @@ def generate_launch_description():
 
             'use_offset_goal': True,
             'offset_frame': 'world',
-            'offset_xyz': [-1.0, 0.0, 0.0],
+            'offset_xyz': [1.0, 0.0, 0.0],
 
             'ee_twist_topic': '/resolved_rate_controller/ee_twist',
 
             # ✅ IMPORTANT: match MecanumDriveController's subscriber (TwistStamped)
             'cmd_vel_topic':  '/mecanum_controller/reference',
+            'ignore_marker_orientation': False,
+            'fixed_marker_to_base_rpy': [1.5707963, 0.0, 0.0],  # +90° about x
+
 
             'base_is_holonomic': False,
             'k_heading': 1.5,
@@ -161,7 +165,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time',  default_value='false'),
-        DeclareLaunchArgument('bag_prefix',    default_value='ombot_run'),
+        DeclareLaunchArgument('bag_prefix',    default_value='ombot_run1'),
         DeclareLaunchArgument('storage',       default_value='sqlite3'),
         DeclareLaunchArgument('compress',      default_value='zstd'),
         DeclareLaunchArgument('qos_overrides', default_value='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'),
