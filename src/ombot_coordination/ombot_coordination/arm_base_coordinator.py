@@ -55,6 +55,17 @@ def rotmat_from_rpy(roll, pitch, yaw):
     Rx = np.array([[1,0,0],[0,cr,-sr],[0,sr,cr]])
     return Rz @ Ry @ Rx
 
+def quat_from_rpy(roll: float, pitch: float, yaw: float) -> Tuple[float, float, float, float]:
+    cr, sr = math.cos(roll/2.0), math.sin(roll/2.0)
+    cp, sp = math.cos(pitch/2.0), math.sin(pitch/2.0)
+    cy, sy = math.cos(yaw/2.0), math.sin(yaw/2.0)
+    qx = sr*cp*cy - cr*sp*sy
+    qy = cr*sp*cy + sr*cp*sy
+    qz = cr*cp*sy - sr*sp*cy
+    qw = cr*cp*cy + sr*sp*sy
+    return (qx, qy, qz, qw)
+
+
 @dataclass
 class LPF:
     alpha: float
@@ -90,6 +101,12 @@ class ArmBaseCoordinator(Node):
         self.offset_xyz      = list(self.declare_parameter('offset_xyz', [0.5, 0.0, 0.0]).get_parameter_value().double_array_value)  # meters
 
         self.inputs_in_world = self.declare_parameter('inputs_in_world', True).get_parameter_value().bool_value
+        self.ignore_marker_orientation = self.declare_parameter(
+            'ignore_marker_orientation', False).get_parameter_value().bool_value
+        self.fixed_marker_to_base_rpy = list(
+            self.declare_parameter('fixed_marker_to_base_rpy',
+                                [0.0, 0.0, 0.0]).get_parameter_value().double_array_value)
+
         self.base_marker_offset_xyz = list(self.declare_parameter('base_marker_offset_xyz', [0.0,0.0,0.0]).get_parameter_value().double_array_value)
         self.base_marker_offset_rpy = list(self.declare_parameter('base_marker_offset_rpy', [0.0,0.0,0.0]).get_parameter_value().double_array_value)
         self.marker_yaw_flip = self.declare_parameter(
@@ -118,7 +135,7 @@ class ArmBaseCoordinator(Node):
 
         self.base_is_holonomic = self.declare_parameter('base_is_holonomic', True).get_parameter_value().bool_value
         self.k_heading = self.declare_parameter('k_heading', 1.5).get_parameter_value().double_value
-        self.base_cmd_scale = self.declare_parameter('base_cmd_scale', 500.0).get_parameter_value().double_value
+        self.base_cmd_scale = self.declare_parameter('base_cmd_scale', 100.0).get_parameter_value().double_value
         self.base_cmd_sat_distance = self.declare_parameter('base_cmd_sat_distance', 0.5).get_parameter_value().double_value
 
         alpha_v = self.declare_parameter('vel_lpf_alpha', 0.6).get_parameter_value().double_value
@@ -239,14 +256,29 @@ class ArmBaseCoordinator(Node):
             qg = (self.goal.pose.orientation.x, self.goal.pose.orientation.y, self.goal.pose.orientation.z, self.goal.pose.orientation.w)
             
             # R_wm = rotation from World → Marker (the coordinate system OptiTrack reports)
-            R_wm = rotmat_from_quat(*qb)
             # Translation offset (in meters) from the mocap marker origin to the robot's base origin,
             # expressed in the marker's local coordinates.
             t_mb = np.array(self.base_marker_offset_xyz, dtype=float)
+            # R_mb = rotmat_from_rpy(*self.base_marker_offset_rpy)
+            # if self.marker_yaw_flip:
+            #     R_mb = rotmat_from_rpy(0.0, 0.0, math.pi) @ R_mb
+
+            if self.ignore_marker_orientation:
+                R_wm = np.eye(3)
+                qb = (0.0, 0.0, 0.0, 1.0)            # keep downstream math happy
+            else:
+                R_wm = rotmat_from_quat(*qb)
+
             R_mb = rotmat_from_rpy(*self.base_marker_offset_rpy)
-            if self.marker_yaw_flip:
-                R_mb = rotmat_from_rpy(0.0, 0.0, math.pi) @ R_mb
+            if self.ignore_marker_orientation:
+                R_mb = rotmat_from_rpy(*self.fixed_marker_to_base_rpy)
+
             R_wb = R_wm @ R_mb
+            # q_mb = quat_from_rpy(*self.base_marker_offset_rpy_with_pi)  # build once
+            # q_b = quat_mul(qb, q_mb)  # world→base quaternion
+            # q_bw = quat_conj(q_b)
+            # yaw_b = yaw_from_quat(*q_b)
+
             pb = pb + R_wm @ t_mb
             R_bw = R_wb.T
             self._last_R_wb = R_wb
@@ -323,7 +355,11 @@ class ArmBaseCoordinator(Node):
             speed = math.hypot(b_vx, b_vy)
             qb = (self.base.pose.orientation.x, self.base.pose.orientation.y,
                   self.base.pose.orientation.z, self.base.pose.orientation.w)
-            yaw_b = yaw_from_quat(*qb)
+            # yaw_b = yaw_from_quat(*qb)
+            if self.ignore_marker_orientation:
+                yaw_b = 0.0   # base x aligned with world x under your assumption
+            else:
+                yaw_b = yaw_from_quat(*qb)
             desired_heading = math.atan2(b_vy, b_vx) if speed > 1e-6 else yaw_b
             heading_err = (desired_heading - yaw_b + math.pi) % (2.0*math.pi) - math.pi
             v_forward = speed * math.cos(heading_err)
