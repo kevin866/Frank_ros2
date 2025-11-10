@@ -88,7 +88,7 @@ def generate_launch_description():
         name='arm_base_coordinator',
         output='screen',
         parameters=[{
-            'inputs_in_world': True,
+            'inputs_in_world': False,
             'world_frame_name': 'world',
             'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
             'ee_pose_topic':   '/vrpn_mocap/RigidBody_2/pose',
@@ -103,7 +103,6 @@ def generate_launch_description():
             'cmd_vel_topic':  '/mecanum_controller/reference',
             'ignore_marker_orientation': False,
             'fixed_marker_to_base_rpy': [1.5707963, 0.0, 0.0],  # +90° about x
-
 
             'base_is_holonomic': False,
             'k_heading': 1.5,
@@ -123,7 +122,7 @@ def generate_launch_description():
             'base_marker_offset_rpy': [0.0, 0.0, 0.0],
             'k_d': 3.0,
             'd_mid': 1.80,
-            'base_cmd_scale': 500.0,
+            'base_cmd_scale': 50.0,
             'base_cmd_sat_distance': 0.8,
         }]
     )
