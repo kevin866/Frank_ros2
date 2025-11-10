@@ -107,6 +107,9 @@ class ArmBaseCoordinator(Node):
             self.declare_parameter('fixed_marker_to_base_rpy',
                                 [0.0, 0.0, 0.0]).get_parameter_value().double_array_value)
 
+        self.ignore_pose_orientations = self.declare_parameter(
+            'ignore_pose_orientations', False).get_parameter_value().bool_value
+
         self.base_marker_offset_xyz = list(self.declare_parameter('base_marker_offset_xyz', [0.0,0.0,0.0]).get_parameter_value().double_array_value)
         self.base_marker_offset_rpy = list(self.declare_parameter('base_marker_offset_rpy', [0.0,0.0,0.0]).get_parameter_value().double_array_value)
         self.marker_yaw_flip = self.declare_parameter(
@@ -135,7 +138,7 @@ class ArmBaseCoordinator(Node):
 
         self.base_is_holonomic = self.declare_parameter('base_is_holonomic', True).get_parameter_value().bool_value
         self.k_heading = self.declare_parameter('k_heading', 1.5).get_parameter_value().double_value
-        self.base_cmd_scale = self.declare_parameter('base_cmd_scale', 100.0).get_parameter_value().double_value
+        self.base_cmd_scale = self.declare_parameter('base_cmd_scale', 500.0).get_parameter_value().double_value
         self.base_cmd_sat_distance = self.declare_parameter('base_cmd_sat_distance', 0.5).get_parameter_value().double_value
 
         alpha_v = self.declare_parameter('vel_lpf_alpha', 0.6).get_parameter_value().double_value
@@ -287,21 +290,30 @@ class ArmBaseCoordinator(Node):
             p_bg = R_bw @ (pg - pb)
             ex, ey, ez = (p_bg - p_be).tolist()
 
-            q_bw = quat_conj(qb)
-            q_be = quat_mul(q_bw, qe)
-            q_bg = quat_mul(q_bw, qg)
-            q_err = quat_mul(q_bg, quat_conj(q_be))
-            rx, ry, rz = quat_to_rotvec(*q_err)
+            if self.ignore_pose_orientations:
+                rx = ry = rz = 0.0
+            else:
+                q_bw = quat_conj(qb)
+                q_be = quat_mul(q_bw, qe)
+                q_bg = quat_mul(q_bw, qg)
+                q_err = quat_mul(q_bg, quat_conj(q_be))
+                rx, ry, rz = quat_to_rotvec(*q_err)
         else:
             ex = self.goal.pose.position.x - self.ee.pose.position.x
             ey = self.goal.pose.position.y - self.ee.pose.position.y
             ez = self.goal.pose.position.z - self.ee.pose.position.z
-            qe = (self.ee.pose.orientation.x, self.ee.pose.orientation.y, self.ee.pose.orientation.z, self.ee.pose.orientation.w)
-            qg = (self.goal.pose.orientation.x, self.goal.pose.orientation.y, self.goal.pose.orientation.z, self.goal.pose.orientation.w)
-            q_err = quat_mul(qg, quat_conj(qe))
-            rx, ry, rz = quat_to_rotvec(*q_err)
+            if self.ignore_pose_orientations:
+                rx = ry = rz = 0.0
+            else:
+                qe = (self.ee.pose.orientation.x, self.ee.pose.orientation.y, self.ee.pose.orientation.z, self.ee.pose.orientation.w)
+                qg = (self.goal.pose.orientation.x, self.goal.pose.orientation.y, self.goal.pose.orientation.z, self.goal.pose.orientation.w)
+                q_err = quat_mul(qg, quat_conj(qe))
+                rx, ry, rz = quat_to_rotvec(*q_err)
 
-        rx *= self.k_ori_w; ry *= self.k_ori_w; rz *= self.k_ori_w
+        if not self.ignore_pose_orientations:
+            rx *= self.k_ori_w; ry *= self.k_ori_w; rz *= self.k_ori_w
+        else:
+            rx = ry = rz = 0.0
         e6 = [ex, ey, ez, rx, ry, rz]
         raw_edot = [(e6[i] - self.last_e6[i]) / dt for i in range(6)]
         self.last_e6 = e6[:]
@@ -404,7 +416,7 @@ class ArmBaseCoordinator(Node):
         arm_wz = clamp(arm_wz, -self.ee_ang_lim, self.ee_ang_lim)
 
         # 6.5) Global stop window
-        if e_xy < 0.03 and abs(e6[2]) < 0.03:
+        if e_xy < 0.3 and abs(e6[2]) < 0.3:
             arm_vx = arm_vy = arm_vz = 0.0
             arm_wx = arm_wy = arm_wz = 0.0
             b_vx = b_vy = 0.0
@@ -425,7 +437,7 @@ class ArmBaseCoordinator(Node):
             cmd_vx, cmd_vy = b_vx, b_vy
             cmd_frame = 'base'
         twb.header.frame_id = cmd_frame
-        twb.twist.linear.x  = float(cmd_vx)
+        twb.twist.linear.x  = -float(cmd_vx)
         twb.twist.linear.y  = float(cmd_vy)
         twb.twist.linear.z  = 0.0
         twb.twist.angular.x = 0.0
@@ -438,7 +450,7 @@ class ArmBaseCoordinator(Node):
         twa.header.frame_id = 'link_1'
         twa.twist.linear.x,  twa.twist.linear.y,  twa.twist.linear.z  = float(arm_vx), float(arm_vy), float(arm_vz)
         twa.twist.angular.x, twa.twist.angular.y, twa.twist.angular.z = float(arm_wx), float(arm_wy), float(arm_wz)
-        self.pub_ee_twist.publish(twa)
+        # self.pub_ee_twist.publish(twa)
 
     # end class
 
