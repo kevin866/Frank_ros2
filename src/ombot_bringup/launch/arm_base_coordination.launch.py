@@ -88,23 +88,25 @@ def generate_launch_description():
         name='arm_base_coordinator',
         output='screen',
         parameters=[{
-            'inputs_in_world': False,
+            'inputs_in_world': True,
             'world_frame_name': 'world',
             'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
-            'ee_pose_topic':   '/vrpn_mocap/RigidBody_2/pose',
+            'ee_pose_topic':   '/ee_pose',
 
             'use_offset_goal': True,
             'offset_frame': 'world',
-            'offset_xyz': [1.0, 0.0, 0.0],
+            'offset_xyz': [1.0, 0.0, 1.0],
 
             'ee_twist_topic': '/resolved_rate_controller/ee_twist',
 
             # ✅ IMPORTANT: match MecanumDriveController's subscriber (TwistStamped)
             'cmd_vel_topic':  '/mecanum_controller/reference',
-            'ignore_marker_orientation': False,
+            'ignore_marker_orientation': True,
             'fixed_marker_to_base_rpy': [1.5707963, 0.0, 0.0],  # +90° about x
+            'base_marker_offset_rpy': [1.5707963, 0.0, 0.0],  # +90° about x
+            'ignore_pose_orientations': True,
 
-            'base_is_holonomic': False,
+            'base_is_holonomic': True,
             'k_heading': 1.5,
             'kp_lin': 3.0, 'kd_lin': 0.3,
             'kp_ang': 2.0, 'kd_ang': 0.25,
@@ -112,17 +114,17 @@ def generate_launch_description():
             'ee_lin_limit': 0.15, 'ee_ang_limit': 0.6,
             'base_lin_limit': 5.0, 'base_ang_limit': 1.2,
             'blend_mid_distance': 0.8, 'blend_slope': 6.0,
-            'max_reach': 0.8,
-            'd_retract_enter': 0.25, 'd_retract_exit': 0.35,
-            'vel_lpf_alpha': 0.9,
+            'max_reach': 0.7,
+            'd_retract_enter': 0.55, 'd_retract_exit': 0.65,
+            'vel_lpf_alpha': 0.8,
             'slew_base': 4.0,
             'slew_arm_lin': 0.5,
             'slew_arm_ang': 1.5,
-            'base_marker_offset_xyz': [0.0, 0.0, 0.0],
-            'base_marker_offset_rpy': [0.0, 0.0, 0.0],
+            'base_marker_offset_xyz': [0.0, 0.0, -0.343],
+            # 'base_marker_offset_rpy': [0.0, 0.0, 0.0],
             'k_d': 3.0,
             'd_mid': 1.80,
-            'base_cmd_scale': 50.0,
+            'base_cmd_scale': 5.0,
             'base_cmd_sat_distance': 0.8,
         }]
     )
@@ -139,7 +141,8 @@ def generate_launch_description():
         '/vrpn_mocap/RigidBody_1/pose',
         '/vrpn_mocap/RigidBody_2/pose',
         '/goal_pose',
-        '/joint_states'
+        '/joint_states',
+        '/ee_pose'
     ]
     bag_cmd_final = [
         'ros2', 'bag', 'record', *topics_to_record,

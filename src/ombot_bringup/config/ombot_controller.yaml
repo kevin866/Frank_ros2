@@ -74,7 +74,7 @@ resolved_rate_controller:
     joints: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6]
     null_kp: [3.0, 3.0, 2.0, 1.0, 0.5, 0.3]
     null_kd: [0.8, 0.8, 0.6, 0.4, 0.25, 0.2]
-    q_home:  [0.0, -0.66, 0.4, 0.0, 0.35, 0.0]
+    q_home:  [0.0, -0.66, 0.4, 0.0, 0.30, 0.0]
     base_link: link_1
     tip_link:  end_link
     inner_controller: "joint_impedance_controller"
