@@ -1,6 +1,7 @@
 #include "resolved_rate_controller/resolved_rate_controller.hpp"
 #include "pluginlib/class_list_macros.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
+#include <sstream> 
 
 using controller_interface::InterfaceConfiguration;
 using controller_interface::interface_configuration_type;
@@ -391,17 +392,24 @@ ResolvedRateController::update_and_write_commands(
         q_ref_[i] += dq_clamped;
         err_norm  += e * e;
         qdot_norm += qdot_ref_[i] * qdot_ref_[i]; 
+        // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+        //   "dq_raw=%.4f  dq_clamped=%.4f", dq_raw, dq_clamped);
+
+        // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+        //   "dq_raw=%.4f  dq_clamped=%.4f", dq_raw, dq_clamped);
       }
       // RCLCPP_INFO_THROTTLE(
       //   get_node()->get_logger(),                // logger
       //   *get_node()->get_clock(),                // clock
       //   1000,                                   // ms between prints
       //   "Nullspace active: ||err||=%.4f  ||qdot_ref||=%.4f  null_kp=%.3f",
-      //   err_norm, qdot_norm, null_kp_);
+      // //   err_norm, qdot_norm, null_kp_);
       // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
       //   "NS: dt=%.4f dt_used=%.4f ||qdot_ref||=%.4f step_limit=%.4f sat_step=%zu/%zu",
       //   dt, dt_used, Eigen::Map<Eigen::VectorXd>(qdot_ref_.data(), N).norm(),
       //   step_limit_, sat_step, N);
+
+
     } else {
       for (size_t i = 0; i < N; ++i) {
         qdot_ref_[i] = 0.0;                            // hold
@@ -446,6 +454,18 @@ ResolvedRateController::update_and_write_commands(
   auto solver = A.ldlt();
   Eigen::VectorXd qdot = Je.transpose() * solver.solve(v);  // robust solve
 
+  double task_mag = qdot.norm();
+
+  task_mag = std::clamp(task_mag, 0.0, 1.0);
+
+  double null_scale_adapt = 20.0 * std::pow(1.0 - task_mag, 3.0);
+
+  RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    "||qdot||=%.3f  qdot[0]=%.3f  dt=%.3f  step_limit=%.3f", qdot.norm(), qdot(0), dt, step_limit_);
+
+
+
+
   // 6) Nullspace posture bias: qdot += N * (K * e)
   // if (posture_active) {
   //   Eigen::MatrixXd I   = Eigen::MatrixXd::Identity(N, N);
@@ -469,15 +489,27 @@ ResolvedRateController::update_and_write_commands(
       double ui = null_kp_[i] * e(i) + null_kd_[i] * ed(i);
 
       // (optional) keep null bias gentle vs. task
-      ui *= null_scale_;  // e.g., null_scale_ = 0.5
+      // ui *= null_scale_;  // e.g., null_scale_ = 0.5
+      ui *= null_scale_adapt;
+
 
       // clamp per-joint null velocity contribution
       ui = std::clamp(ui, -qdot_limit_, qdot_limit_);
       u_posture(i) = ui;
     }
 
+    // Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n", "[", "]");
+
+    // RCLCPP_INFO_STREAM_THROTTLE(
+    //     get_node()->get_logger(),
+    //     *get_node()->get_clock(),
+    //     100,  // ms
+    //     "Nproj =\n" << Nproj.format(fmt));
+
+
     // add projected nullspace motion
-    qdot += Nproj * u_posture;
+    // qdot += Nproj * u_posture;
+    // qdot += u_posture;
   }
 
 
@@ -495,8 +527,13 @@ ResolvedRateController::update_and_write_commands(
   // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
   //   "||v||=%.3f  rank<=6, lambda=%.3f", v.norm(), lambda_);
 
-    // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-    //   "||qdot||=%.3f  qdot[0]=%.3f  dt=%.3f  step_limit=%.3f", qdot.norm(), qdot(0), dt, step_limit_);
+
+
+    // RCLCPP_INFO_THROTTLE(
+    //     get_node()->get_logger(),
+    //     *get_node()->get_clock(),
+    //     100,  // milliseconds
+    //     "null_scale_adapt = %.3f", null_scale_adapt);
 
     write_refs_to_slots();  // fills pos_ref_slots_[i].value / vel_ref_slots_[i].value
     return controller_interface::return_type::OK;

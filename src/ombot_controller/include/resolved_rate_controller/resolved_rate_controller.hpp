@@ -50,15 +50,28 @@ private:
   // params
   std::vector<std::string> joint_names_;
   std::string base_link_, tip_link_;
-  double lambda_{0.02};        // DLS damping
-  double qdot_limit_{2.5};     // rad/s clamp
-  double integ_limit_{1e9};    // safety clamp on integrated q_ref
-  double step_limit_{0.05};    // new: max per-timestep change
-  double dt_ceiling_{0.1};   // max dt for integration
-  double null_scale_{0.5};   // max dt for integration
-  double err_db_{0.01};   // rad
-  double v_min_  = 0.03;   // rad/s
-  double tau_rebase_{0.5};
+  // double lambda_{0.02};        // DLS damping
+  // double qdot_limit_{0.5};     // rad/s clamp
+  // double integ_limit_{0.4};    // safety clamp on integrated q_ref
+  // double step_limit_{0.021};    // new: max per-timestep change
+  // double dt_ceiling_{0.05};   // max dt for integration
+  // double null_scale_{0.5};   // max dt for integration
+  // double err_db_{0.01};   // rad
+  // double v_min_  = 0.03;   // rad/s
+  // double tau_rebase_{0.5};
+  // === Resolved-rate controller tuning (100 Hz) ===
+  double lambda_{0.01};        // DLS damping; 0.01–0.05 is typical
+  double qdot_limit_{0.4};     // rad/s per joint speed limit (bump to 1.0 if safe)
+  double integ_limit_{0.20};   // rad clamp for integrated posture/error (anti-windup)
+  double dt_ceiling_{0.03};    // s; cap dt used for integration (100 Hz -> 0.01, allow spikes to 0.03)
+
+  // Max per-timestep joint change (derived for consistency)
+  double step_limit_{ qdot_limit_ * dt_ceiling_ };  // = 0.7 * 0.03 = 0.021 rad/step @ worst allowed dt
+
+  double null_scale_{0.8};     // dimensionless weight for posture bias (static)
+  double err_db_{0.01};        // rad deadband to ignore tiny errors/noise
+  double v_min_{0.01};         // rad/s floor to overcome stiction (apply only when |cmd| < v_min_)
+  double tau_rebase_{0.5};     // s; smoothing/slew time constant for reference rebasing
 
   
 
@@ -69,6 +82,10 @@ private:
   std::vector<int> pos_cmd_index_;
   std::vector<int> vel_cmd_index_;
   std::vector<double> null_kp_, null_kd_;
+
+  double task_mag_ema_ = 0.0;   // smoothed task magnitude
+  const double ema_alpha_ = 0.8; // 0..1, higher = quicker response
+
 
 
 

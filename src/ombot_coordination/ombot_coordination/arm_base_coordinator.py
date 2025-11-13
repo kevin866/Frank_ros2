@@ -86,9 +86,41 @@ class SlewLimiter:
         self.last = x
         return x
 
+# drop this helper somewhere in your node file
+class ThrottledLogger:
+    def __init__(self, node):
+        self._node = node
+        self._last_ns = {}  # key -> last log time in ns
+
+    def _allow(self, key: str, period_s: float) -> bool:
+        now_ns = self._node.get_clock().now().nanoseconds
+        last = self._last_ns.get(key, 0)
+        if now_ns - last >= int(period_s * 1e9):
+            self._last_ns[key] = now_ns
+            return True
+        return False
+
+    def info(self, period_s: float, msg: str, key: str = None):
+        k = key or "info"
+        if self._allow(k, period_s):
+            self._node.get_logger().info(msg)
+
+    def warn(self, period_s: float, msg: str, key: str = None):
+        k = key or "warn"
+        if self._allow(k, period_s):
+            self._node.get_logger().warn(msg)
+
+    def error(self, period_s: float, msg: str, key: str = None):
+        k = key or "error"
+        if self._allow(k, period_s):
+            self._node.get_logger().error(msg)
+
+
 class ArmBaseCoordinator(Node):
     def __init__(self):
         super().__init__('arm_base_coordinator')
+        
+        self.log = ThrottledLogger(self)
 
         # --- Parameters ---
         self.ee_pose_topic  = self.declare_parameter('ee_pose_topic',  '/ee_pose').get_parameter_value().string_value
@@ -111,7 +143,7 @@ class ArmBaseCoordinator(Node):
             'ignore_pose_orientations', False).get_parameter_value().bool_value
 
         self.base_marker_offset_xyz = list(self.declare_parameter('base_marker_offset_xyz', [0.0,0.0,0.0]).get_parameter_value().double_array_value)
-        self.base_marker_offset_rpy = list(self.declare_parameter('base_marker_offset_rpy', [0.0,0.0,0.0]).get_parameter_value().double_array_value)
+        self.base_marker_offset_rpy = list(self.declare_parameter('base_marker_offset_rpy', [1.5707963,0.0,0.0]).get_parameter_value().double_array_value)
         self.marker_yaw_flip = self.declare_parameter(
             'marker_yaw_flip', True).get_parameter_value().bool_value  # apply +π yaw if mocap marker faces backward
         self.ee_twist_topic  = self.declare_parameter('ee_twist_topic','/resolved_rate_controller/ee_twist').get_parameter_value().string_value
@@ -128,8 +160,8 @@ class ArmBaseCoordinator(Node):
         self.d_mid = self.declare_parameter('blend_mid_distance', 0.8).get_parameter_value().double_value
         self.max_reach = self.declare_parameter('max_reach', 0.8).get_parameter_value().double_value
 
-        self.d_retract_enter  = self.declare_parameter('d_retract_enter', 0.25).get_parameter_value().double_value
-        self.d_retract_exit   = self.declare_parameter('d_retract_exit', 0.35).get_parameter_value().double_value
+        self.d_retract_enter  = self.declare_parameter('d_retract_enter', 0.35).get_parameter_value().double_value
+        self.d_retract_exit   = self.declare_parameter('d_retract_exit', 0.45).get_parameter_value().double_value
 
         self.ee_lin_lim  = self.declare_parameter('ee_lin_limit', 0.15).get_parameter_value().double_value
         self.ee_ang_lim  = self.declare_parameter('ee_ang_limit', 0.6).get_parameter_value().double_value
@@ -154,6 +186,17 @@ class ArmBaseCoordinator(Node):
         self.retract_mode = False
         self.last_time = self.get_clock().now()
         self._goal_latched = False  # NEW
+        # If you prefer triggering off alpha instead of distance:
+        self.use_alpha_for_retract = True
+        self.alpha_enter           = 0.7
+        self.alpha_exit            = 0.4
+
+        self.retract_center_frac   = 0.30   # center at 30% of initial distance
+        self.retract_band_frac     = 0.10   # hysteresis band is 10% of initial distance
+        self.retract_center_min_m  = 0.05   # never below 5 cm
+        self.retract_center_max_m  = 1.50   # never above 1.5 m
+        self.retract_band_min_m    = 0.03   # min hysteresis width (m)
+
 
         # --- IO ---
         mocap_qos = QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=10,
@@ -207,20 +250,26 @@ class ArmBaseCoordinator(Node):
         pb = np.array([self.base.pose.position.x, self.base.pose.position.y, self.base.pose.position.z])
         qb = (self.base.pose.orientation.x, self.base.pose.orientation.y,
               self.base.pose.orientation.z, self.base.pose.orientation.w)
-        R_wb = rotmat_from_quat(*qb)
+        pe = np.array([self.ee.pose.position.x,   self.ee.pose.position.y,   self.ee.pose.position.z])
+
+        R_wb = rotmat_from_rpy(*self.base_marker_offset_rpy).T
+        t_mb = np.array(self.base_marker_offset_xyz, dtype=float)
+
+        # R_wb = self.P
+        
         t_off = np.array(self.offset_xyz, dtype=float)
 
         if self.inputs_in_world:
             # base pose is in world; express offset in chosen frame
             if self.offset_frame.lower() == 'base':
-                pg = pb + (R_wb @ t_off)    # rotate base-offset into world
+                pg = pb + t_mb + (R_wb @ (t_off + pe))   # rotate base-offset into world
             else:
-                pg = pb + t_off            # world-offset
+                pg = pb + t_mb + t_off + R_wb @ pe          # world-offset
             qg = qb                        # keep goal yaw same as base (simple)
             frame_id = 'world'
         else:
             # inputs already in base frame; goal is simply at offset in base frame
-            pg = t_off
+            pg = t_off - R_wb @ pe
             qg = (0.0,0.0,0.0,1.0)
             frame_id = 'base'
 
@@ -233,6 +282,13 @@ class ArmBaseCoordinator(Node):
         self._goal_latched = True
         self.get_logger().info(f"Latched goal from offset ({self.offset_frame}): "
                                f"x={pg[0]:.3f}, y={pg[1]:.3f}, z={pg[2]:.3f}")
+        p_world = R_wb @ pe
+        self.get_logger().info(f"R_wb @ pe = [{p_world[0]:.3f}, {p_world[1]:.3f}, {p_world[2]:.3f}]")
+        if self.have_goal and not hasattr(self, 'd0_base_xy'):
+            gx, gy = self.goal.pose.position.x, self.goal.pose.position.y
+            bx, by = self.base.pose.position.x, self.base.pose.position.y
+            self.d0_base_xy = math.hypot(gx - bx, gy - by) + 1e-9   # avoid zero
+
 
     # --- Main loop ---
     def spin(self):
@@ -258,13 +314,8 @@ class ArmBaseCoordinator(Node):
             qe = (self.ee.pose.orientation.x,   self.ee.pose.orientation.y,   self.ee.pose.orientation.z,   self.ee.pose.orientation.w)
             qg = (self.goal.pose.orientation.x, self.goal.pose.orientation.y, self.goal.pose.orientation.z, self.goal.pose.orientation.w)
             
-            # R_wm = rotation from World → Marker (the coordinate system OptiTrack reports)
-            # Translation offset (in meters) from the mocap marker origin to the robot's base origin,
-            # expressed in the marker's local coordinates.
+
             t_mb = np.array(self.base_marker_offset_xyz, dtype=float)
-            # R_mb = rotmat_from_rpy(*self.base_marker_offset_rpy)
-            # if self.marker_yaw_flip:
-            #     R_mb = rotmat_from_rpy(0.0, 0.0, math.pi) @ R_mb
 
             if self.ignore_marker_orientation:
                 R_wm = np.eye(3)
@@ -272,23 +323,24 @@ class ArmBaseCoordinator(Node):
             else:
                 R_wm = rotmat_from_quat(*qb)
 
-            R_mb = rotmat_from_rpy(*self.base_marker_offset_rpy)
-            if self.ignore_marker_orientation:
-                R_mb = rotmat_from_rpy(*self.fixed_marker_to_base_rpy)
-
+            R_mb = rotmat_from_rpy(*self.base_marker_offset_rpy).T
+            # R_mb = self.P
             R_wb = R_wm @ R_mb
-            # q_mb = quat_from_rpy(*self.base_marker_offset_rpy_with_pi)  # build once
-            # q_b = quat_mul(qb, q_mb)  # world→base quaternion
-            # q_bw = quat_conj(q_b)
-            # yaw_b = yaw_from_quat(*q_b)
-
             pb = pb + R_wm @ t_mb
             R_bw = R_wb.T
             self._last_R_wb = R_wb
 
-            p_be = R_bw @ (pe - pb)
+            # p_be = R_wb @ pe
+            perr = pg - pb
             p_bg = R_bw @ (pg - pb)
-            ex, ey, ez = (p_bg - p_be).tolist()
+            ex, ey, ez = (p_bg - pe).tolist()
+            self.log.info(1.0,
+                f"pb = [{pb[0]:.3f}, {pb[1]:.3f}, {pb[2]:.3f}],"
+                f"pg = [{pg[0]:.3f}, {pg[1]:.3f}, {pg[2]:.3f}],"
+                f"p_bg = [{p_bg[0]:.3f}, {p_bg[1]:.3f}, {p_bg[2]:.3f}],"
+                f"perr = [{perr[0]:.3f}, {perr[1]:.3f}, {perr[2]:.3f}]",
+            )
+            # ex, ey, ez = p_bg.tolist()
 
             if self.ignore_pose_orientations:
                 rx = ry = rz = 0.0
@@ -299,9 +351,9 @@ class ArmBaseCoordinator(Node):
                 q_err = quat_mul(q_bg, quat_conj(q_be))
                 rx, ry, rz = quat_to_rotvec(*q_err)
         else:
-            ex = self.goal.pose.position.x - self.ee.pose.position.x
-            ey = self.goal.pose.position.y - self.ee.pose.position.y
-            ez = self.goal.pose.position.z - self.ee.pose.position.z
+            ex = self.goal.pose.position.x - self.base.pose.position.x
+            ey = self.goal.pose.position.y - self.base.pose.position.y
+            ez = self.goal.pose.position.z - self.base.pose.position.z
             if self.ignore_pose_orientations:
                 rx = ry = rz = 0.0
             else:
@@ -314,10 +366,28 @@ class ArmBaseCoordinator(Node):
             rx *= self.k_ori_w; ry *= self.k_ori_w; rz *= self.k_ori_w
         else:
             rx = ry = rz = 0.0
+        
+        # R_mb = rotmat_from_rpy(*self.base_marker_offset_rpy)
+        # self.get_logger().info(f"R_bw = \n{R_bw}")
+        # self.get_logger().info(f"base_marker_offset_rpy = {self.base_marker_offset_rpy}")
+
+
+        # e6 = R_mb @ self.offset_xyz
         e6 = [ex, ey, ez, rx, ry, rz]
+        # e6 = [0.0 if abs(e) < 0.01 else e for e in e6]
+
         raw_edot = [(e6[i] - self.last_e6[i]) / dt for i in range(6)]
         self.last_e6 = e6[:]
         edot = raw_edot  # (optional: add LPFs if needed)
+
+        # e6 = [ex, ey, ez, rx, ry, rz]
+        self.log.info(1.0,
+            f"Error: ex={e6[0]:.3f}, ey={e6[1]:.3f}, ez={e6[2]:.3f}, "
+            f"rx={e6[3]:.3f}, ry={e6[4]:.3f}, rz={e6[5]:.3f}",
+            key="err"
+        )
+
+
 
         # 2) Task-space PD
         vx_task =  self.kp_lin * e6[0] - self.kd_lin * edot[0]
@@ -334,17 +404,31 @@ class ArmBaseCoordinator(Node):
             return x,y,z
         vx_l,vy_l,vz_l = clamp_vec3(vx_task,vy_task,vz_task,self.ee_lin_lim)
         wx_l,wy_l,wz_l = clamp_vec3(wx_task,wy_task,wz_task,self.ee_ang_lim)
-
+        # self.get_logger().info(
+        #     f"Linear cmd (clamped): vx={vx_l:.3f}, vy={vy_l:.3f}, vz={vz_l:.3f}; "
+        #     f"Angular cmd (clamped): wx={wx_l:.3f}, wy={wy_l:.3f}, wz={wz_l:.3f}"
+        # )
+        self.log.info(1.0,
+            f"Linear cmd (clamped): vx={vx_l:.3f}, vy={vy_l:.3f}, vz={vz_l:.3f}; "
+            f"Angular cmd (clamped): wx={wx_l:.3f}, wy={wy_l:.3f}, wz={wz_l:.3f}"
+        )
         e_xy = math.hypot(e6[0], e6[1])
 
         # 3) Blend α
         dx = self.goal.pose.position.x - self.base.pose.position.x
         dy = self.goal.pose.position.y - self.base.pose.position.y
         d_base_xy = math.hypot(dx, dy)
+        # self.log.info(1.0,f"d_base_xy = {d_base_xy:.3f}")
 
         dx_arm = self.ee.pose.position.x - self.base.pose.position.x
         dy_arm = self.ee.pose.position.y - self.base.pose.position.y
         dz_arm = self.ee.pose.position.z - self.base.pose.position.z
+
+        # dx_arm = self.ee.pose.position.x 
+        # dy_arm = self.ee.pose.position.y 
+        # dz_arm = self.ee.pose.position.z 
+  
+
         r_arm = min(math.sqrt(dx_arm*dx_arm + dy_arm*dy_arm + dz_arm*dz_arm) / max(self.max_reach,1e-6), 1.0)
 
         alpha_base = sigmoid(self.k_d * (self.d_mid - d_base_xy))   # α↑ near goal
@@ -352,32 +436,68 @@ class ArmBaseCoordinator(Node):
         alpha = clamp(alpha_base * alpha_reach, 0.0, 1.0)
 
         # 4) Retract hysteresis
-        if d_base_xy < self.d_retract_enter: self.retract_mode = True
-        elif d_base_xy > self.d_retract_exit: self.retract_mode = False
+        # if d_base_xy < self.d_retract_enter: self.retract_mode = True
+        # elif d_base_xy > self.d_retract_exit: self.retract_mode = False
+
+        # if d_base_xy < self.d_retract_enter:
+        #     if not self.retract_mode:  # only log on change
+        #         self.retract_mode = True
+        #         self.get_logger().info("🔁 Entered RETRACT mode")
+
+        # elif d_base_xy > self.d_retract_exit:
+        #     if self.retract_mode:  # only log on change
+        #         self.retract_mode = False
+        #         self.get_logger().info("✅ Exited RETRACT mode")
+
+        # ✅ Log alpha and its components
+        self.log.info(
+            1.0,
+            f"α={alpha:.3f} (α_base={alpha_base:.3f}, α_reach={alpha_reach:.3f}), "
+            f"d_base_xy={d_base_xy:.3f}, r_arm={r_arm:.3f}",
+            key="alpha"
+        )
+
+        if self.use_alpha_for_retract:
+            if alpha > self.alpha_enter and not self.retract_mode:
+                self.retract_mode = True
+                self.get_logger().info(f"🔁 Entered RETRACT (alpha={alpha:.2f})")
+            elif alpha < self.alpha_exit and self.retract_mode:
+                self.retract_mode = False
+                self.get_logger().info(f"✅ Exited RETRACT (alpha={alpha:.2f})")
+
+
 
         if self.base_cmd_sat_distance > 0.0:
             scale_alpha = clamp(e_xy / max(self.base_cmd_sat_distance, 1e-6), 0.0, 1.0)
         else:
             scale_alpha = 1.0
         base_scale = 1.0 + scale_alpha * (self.base_cmd_scale - 1.0)
+        # base_scale = 0.01
 
         # 5) Base allocation
         b_vx, b_vy, b_wz = alpha * vx_task, alpha * vy_task, alpha * wz_task
-        if not self.base_is_holonomic:
-            speed = math.hypot(b_vx, b_vy)
-            qb = (self.base.pose.orientation.x, self.base.pose.orientation.y,
-                  self.base.pose.orientation.z, self.base.pose.orientation.w)
-            # yaw_b = yaw_from_quat(*qb)
-            if self.ignore_marker_orientation:
-                yaw_b = 0.0   # base x aligned with world x under your assumption
-            else:
-                yaw_b = yaw_from_quat(*qb)
-            desired_heading = math.atan2(b_vy, b_vx) if speed > 1e-6 else yaw_b
-            heading_err = (desired_heading - yaw_b + math.pi) % (2.0*math.pi) - math.pi
-            v_forward = speed * math.cos(heading_err)
-            w_heading = self.k_heading * heading_err if speed > 1e-3 else 0.0
-            b_vx, b_vy = v_forward, 0.0
-            b_wz = clamp(b_wz + w_heading, -self.base_ang_lim, self.base_ang_lim)
+
+        b_vx *= base_scale
+        b_vy *= base_scale
+        b_wz *= base_scale
+        # self.get_logger().info(
+        #     f"Base cmd (pre-limit): vx={b_vx:.3f}, vy={b_vy:.3f}, wz={b_wz:.3f}, alpha={alpha:.3f}"
+        # )
+        # if not self.base_is_holonomic:
+        #     speed = math.hypot(b_vx, b_vy)
+        #     qb = (self.base.pose.orientation.x, self.base.pose.orientation.y,
+        #           self.base.pose.orientation.z, self.base.pose.orientation.w)
+        #     # yaw_b = yaw_from_quat(*qb)
+        #     if self.ignore_marker_orientation:
+        #         yaw_b = 0.0   # base x aligned with world x under your assumption
+        #     else:
+        #         yaw_b = yaw_from_quat(*qb)
+        #     desired_heading = math.atan2(b_vy, b_vx) if speed > 1e-6 else yaw_b
+        #     heading_err = (desired_heading - yaw_b + math.pi) % (2.0*math.pi) - math.pi
+        #     v_forward = speed * math.cos(heading_err)
+        #     w_heading = self.k_heading * heading_err if speed > 1e-3 else 0.0
+        #     b_vx, b_vy = v_forward, 0.0
+        #     b_wz = clamp(b_wz + w_heading, -self.base_ang_lim, self.base_ang_lim)
 
         # 5b) Arm allocation
         arm_vx, arm_vy, arm_vz = (1.0 - alpha) * vx_l, (1.0 - alpha) * vy_l, (1.0 - alpha) * vz_l
@@ -386,7 +506,8 @@ class ArmBaseCoordinator(Node):
         # Retract overrides
         if self.retract_mode:
             arm_vx = arm_vy = 0.0
-            arm_vz = -0.05
+            # arm_vz = -0.05
+            arm_vz = 0.0
             arm_wx = arm_wy = arm_wz = 0.0
 
         # 6) LPF + slew + per-component clamps
@@ -397,10 +518,15 @@ class ArmBaseCoordinator(Node):
         b_vy *= base_scale
         b_wz *= base_scale
         b_lin = math.hypot(b_vx,b_vy)
+
+        # self.get_logger().info(f"Base linear speed magnitude (b_lin) = {b_lin:.3f}")
+
         if b_lin > self.base_lin_lim and b_lin > 1e-9:
             s = self.base_lin_lim / b_lin; b_vx *= s; b_vy *= s
         b_wz = clamp(b_wz, -self.base_ang_lim, self.base_ang_lim)
-
+        # self.get_logger().info(
+        #     f"base alloc: α={alpha:.3f}, vx={b_vx:.3f}, vy={b_vy:.3f}, wz={b_wz:.3f}"
+        # )
         arm_vx = self.lpf_arm_vx.step(self.slew_arm_lin_x.step(arm_vx, dt))
         arm_vy = self.lpf_arm_vy.step(self.slew_arm_lin_y.step(arm_vy, dt))
         arm_vz = self.lpf_arm_vz.step(self.slew_arm_lin_z.step(arm_vz, dt))
@@ -416,7 +542,7 @@ class ArmBaseCoordinator(Node):
         arm_wz = clamp(arm_wz, -self.ee_ang_lim, self.ee_ang_lim)
 
         # 6.5) Global stop window
-        if e_xy < 0.3 and abs(e6[2]) < 0.3:
+        if e_xy < 0.05 and abs(e6[2]) < 0.05:
             arm_vx = arm_vy = arm_vz = 0.0
             arm_wx = arm_wy = arm_wz = 0.0
             b_vx = b_vy = 0.0
@@ -430,12 +556,12 @@ class ArmBaseCoordinator(Node):
         twb.header.stamp = now.to_msg()
         # Publish in the frame the downstream controller expects.
         if self.inputs_in_world:
-            v_world = self._last_R_wb @ np.array([b_vx, b_vy, 0.0])
+            v_world = self._last_R_wb @ np.array([b_vx, b_wz, b_vy])
             cmd_vx, cmd_vy = v_world[0], v_world[1]
             cmd_frame = 'world'
         else:
             cmd_vx, cmd_vy = b_vx, b_vy
-            cmd_frame = 'base'
+            cmd_frame = 'base_link'
         twb.header.frame_id = cmd_frame
         twb.twist.linear.x  = -float(cmd_vx)
         twb.twist.linear.y  = float(cmd_vy)
@@ -444,13 +570,24 @@ class ArmBaseCoordinator(Node):
         twb.twist.angular.y = 0.0
         twb.twist.angular.z = float(b_wz)
         self.pub_cmd_vel.publish(twb)
+        # self.get_logger().info(
+        #     f"[{twb.header.frame_id}] cmd_vx={cmd_vx:.3f}, cmd_vy={b_vy:.3f}, b_wz={b_wz:.3f}"
+        # )
+
 
 
         twa = TwistStamped(); twa.header.stamp = now.to_msg()
         twa.header.frame_id = 'link_1'
         twa.twist.linear.x,  twa.twist.linear.y,  twa.twist.linear.z  = float(arm_vx), float(arm_vy), float(arm_vz)
         twa.twist.angular.x, twa.twist.angular.y, twa.twist.angular.z = float(arm_wx), float(arm_wy), float(arm_wz)
-        # self.pub_ee_twist.publish(twa)
+        if not self.retract_mode:
+            self.pub_ee_twist.publish(twa)
+        self.log.info(0.5,
+            f"[{twa.header.frame_id}] arm_vx={arm_vx:.3f}, arm_vy={arm_vy:.3f}, arm_vz={arm_vz:.3f}, "
+            f"wx={arm_wx:.3f}, wy={arm_wy:.3f}, wz={arm_wz:.3f}",
+            key="arm_twist"
+        )
+
 
     # end class
 
