@@ -1,16 +1,37 @@
 <library path="ombot_controller">
   <class name="ombot_controller/GravityCancelController"
          type="ombot_controller::GravityCancelController"
-         base_class_type="controller_interface::ControllerInterface"/>
+         base_class_type="controller_interface::ControllerInterface" />
+
   <class name="ombot_controller/EffortController"
          type="ombot_controller::EffortController"
-         base_class_type="controller_interface::ControllerInterface"/>
+         base_class_type="controller_interface::ControllerInterface" />
+
+  <class name="ombot_controller/JointExcitationController"
+         type="ombot_controller::JointExcitationController"
+         base_class_type="controller_interface::ControllerInterface" />
+
   <class name="ombot_controller/JointImpedanceController"
          type="ombot_controller::JointImpedanceController"
-         base_class_type="controller_interface::ChainableControllerInterface"/>
-  <class type="ombot_controller::ResolvedRateController"
-         base_class_type="controller_interface::ChainableControllerInterface"
-         name="ombot_controller/ResolvedRateController">
-         <description>Velocity-level Jacobian controller exporting reference interfaces</description>
+         base_class_type="controller_interface::ChainableControllerInterface">
+    <description>
+      Joint-space impedance controller for the arm (chainable).
+    </description>
+  </class>
+
+  <class name="ombot_controller/ResolvedRateController"
+         type="ombot_controller::ResolvedRateController"
+         base_class_type="controller_interface::ChainableControllerInterface">
+    <description>
+      Velocity-level Jacobian controller exporting reference interfaces.
+    </description>
+  </class>
+
+  <class name="ombot_controller/WholeBodyResolvedRateController"
+         type="ombot_controller::WholeBodyResolvedRateController"
+         base_class_type="controller_interface::ChainableControllerInterface">
+    <description>
+      Whole-body (arm + base) resolved-rate controller.
+    </description>
   </class>
 </library>

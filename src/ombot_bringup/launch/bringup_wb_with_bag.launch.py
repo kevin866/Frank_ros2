@@ -1,8 +1,9 @@
-# bringup_with_bag.launch.py
+# bringup_wb_with_bag.launch.py
+
 import math
 from launch import LaunchDescription
 from launch.actions import (
-    DeclareLaunchArgument, TimerAction, ExecuteProcess,
+    DeclareLaunchArgument, ExecuteProcess,
     RegisterEventHandler, Shutdown
 )
 from launch.event_handlers import OnProcessExit
@@ -11,22 +12,26 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
 
+
 def generate_launch_description():
     # --- Common args ---
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     bag_prefix   = LaunchConfiguration('bag_prefix',   default='ombot_run')
-    storage      = LaunchConfiguration('storage',      default='sqlite3')    # or 'sqlite3'
-    compress     = LaunchConfiguration('compress',     default='zstd')    # or 'none'
-    qos_path     = LaunchConfiguration('qos_overrides', default='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml')       # optional: path to qos.yaml
+    storage      = LaunchConfiguration('storage',      default='sqlite3')
+    compress     = LaunchConfiguration('compress',     default='zstd')
+    qos_path     = LaunchConfiguration(
+        'qos_overrides',
+        default='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'
+    )
     split_size   = LaunchConfiguration('max_bag_size', default=str(1024*1024*1024))  # 1 GiB
-    split_secs   = LaunchConfiguration('max_bag_secs', default='600')     # 10 minutes
+    split_secs   = LaunchConfiguration('max_bag_secs', default='600')                # 10 min
 
     # --- Build robot_description from URDF/Xacro ---
     urdf_file = PathJoinSubstitution([
         get_package_share_directory('ombot_description'),
         'urdf', 'ombot.urdf.xacro'
     ])
-    
+
     robot_description_content = ParameterValue(
         Command([PathJoinSubstitution([FindExecutable(name='xacro')]), ' ', urdf_file]),
         value_type=str
@@ -35,15 +40,19 @@ def generate_launch_description():
     robot_state_publisher = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
-        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time'),
-                     'robot_description': robot_description_content}],
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'robot_description': robot_description_content
+        }],
         output='screen'
     )
 
+    # --- ros2_control node + controllers YAML ---
     ctrl_yaml = PathJoinSubstitution([
         get_package_share_directory('ombot_bringup'),
         'config', 'ombot_controller.yaml'
     ])
+
     control_node = Node(
         package='controller_manager',
         executable='ros2_control_node',
@@ -51,99 +60,97 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description_content}, ctrl_yaml],
     )
 
-    # --- Controllers (chain activation) ---
+    # --- Controllers (spawn chain) ---
     jsb = Node(
         package='controller_manager', executable='spawner',
         arguments=['joint_state_broadcaster', '--activate', '-c', '/controller_manager'],
         output='screen'
     )
+
     imp = Node(
         package='controller_manager', executable='spawner',
         arguments=['joint_impedance_controller', '--activate', '-c', '/controller_manager'],
         output='screen'
     )
-    rr  = Node(
+
+    wb_rr = Node(
         package='controller_manager', executable='spawner',
-        arguments=['resolved_rate_controller', '--activate', '-c', '/controller_manager'],
+        arguments=['wb_resolved_rate_controller', '--activate', '-c', '/controller_manager'],
         output='screen'
     )
+
     mecanum_spawner = Node(
         package='controller_manager', executable='spawner',
         arguments=['mecanum_controller', '--activate', '-c', '/controller_manager'],
         output='screen'
     )
 
-    # Chain: JSB -> Impedance -> ResolvedRate
-    chain_imp_after_jsb = RegisterEventHandler(
-        OnProcessExit(target_action=jsb, on_exit=[imp])
-    )
-    chain_rr_after_imp = RegisterEventHandler(
-        OnProcessExit(target_action=imp, on_exit=[rr])
-    )
-
-    # --- Coordinator ---
-    coordinator = Node(
+    goal_from_offset = Node(
         package='ombot_coordination',
-        executable='arm_base_coordinator',
-        name='arm_base_coordinator',
+        executable='goal_from_base_offset_latched',
+        name='goal_from_base_offset_latched',
         output='screen',
         parameters=[{
-            'inputs_in_world': True,
-            'world_frame_name': 'world',
             'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
-            'ee_pose_topic':   '/ee_pose',
-
-            'use_offset_goal': True,
-            'offset_frame': 'world',
-            'offset_xyz': [-1.0, 0.0, -1.0],
-
-            'ee_twist_topic': '/resolved_rate_controller/ee_twist',
-
-            # ✅ IMPORTANT: match MecanumDriveController's subscriber (TwistStamped)
-            'cmd_vel_topic':  '/mecanum_controller/reference',
-            'ignore_marker_orientation': True,
-            'fixed_marker_to_base_rpy': [1.5707963, 0.0, 0.0],  # +90° about x
-            'base_marker_offset_rpy': [1.5707963, 0.0, 0.0],  # +90° about x
-            'ignore_pose_orientations': True,
-
-            'base_is_holonomic': True,
-            'k_heading': 1.5,
-            'kp_lin': 3.0, 'kd_lin': 0.3,
-            'kp_ang': 2.0, 'kd_ang': 0.25,
-            'k_ori_weight': 0.5,
-            'ee_lin_limit': 0.15, 'ee_ang_limit': 0.6,
-            'base_lin_limit': 5.0, 'base_ang_limit': 1.2,
-            'blend_mid_distance': 0.8, 'blend_slope': 6.0,
-            'max_reach': 0.7,
-            'd_retract_enter': 0.55, 'd_retract_exit': 0.65,
-            'vel_lpf_alpha': 0.8,
-            'slew_base': 4.0,
-            'slew_arm_lin': 0.5,
-            'slew_arm_ang': 1.5,
-            'base_marker_offset_xyz': [0.0, 0.0, -0.343],
-            # 'base_marker_offset_rpy': [0.0, 0.0, 0.0],
-            'k_d': 3.0,
-            'd_mid': 1.80,
-            'base_cmd_scale': 5.0,
-            'base_cmd_sat_distance': 0.8,
+            'goal_pose_topic': '/goal_pose',
+            'offset_xyz': [1.0, 1.0, 0.0],   # set your desired offset here (world frame)
+            'latch': True,                   # True = latch once, False = follow base
         }]
     )
 
-    # Start coordinator only after resolved_rate_controller is active
-    start_coord_after_rr = RegisterEventHandler(
-        OnProcessExit(target_action=rr, on_exit=[coordinator])
+
+    # Chain: JSB -> Impedance -> WholeBodyResolvedRate
+    chain_imp_after_jsb = RegisterEventHandler(
+        OnProcessExit(target_action=jsb, on_exit=[imp])
+    )
+    chain_wb_after_imp = RegisterEventHandler(
+        OnProcessExit(target_action=imp, on_exit=[wb_rr])
+    )
+
+    # --- Whole-body task commander (Python) ---
+    # This node just publishes desired EE twist in base_link frame
+    wb_task_commander = Node(
+        package='ombot_coordination',
+        executable='whole_body_task_commander',
+        name='whole_body_task_commander',
+        output='screen',
+        parameters=[{
+            # Poses (in world frame)
+            'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
+            'ee_pose_topic':   '/ee_pose',
+            'goal_pose_topic': '/goal_pose',
+
+            # Twist out -> must match controller's "~ee_twist" topic expansion
+            'ee_twist_topic': '/wb_resolved_rate_controller/ee_twist',
+
+            # Simple task-space gains (tune as needed)
+            'kp_pos': 1.0,
+            'kp_rot': 1.0,
+            'kd_pos': 0.0,
+            'kd_rot': 0.0,
+
+            # Velocity caps
+            'max_lin': 0.2,   # m/s
+            'max_ang': 0.7,   # rad/s
+        }]
+    )
+
+    # Start commander only after wb_resolved_rate_controller is active
+    start_commander_after_wb = RegisterEventHandler(
+        OnProcessExit(target_action=wb_rr, on_exit=[wb_task_commander])
     )
 
     # --- rosbag2 recorder ---
     topics_to_record = [
-        '/mecanum_controller/reference',     # base ref (TwistStamped)
-        '/resolved_rate_controller/ee_twist',
+        '/mecanum_controller/reference',         # base ref (TwistStamped)
+        '/wb_resolved_rate_controller/ee_twist', # desired EE twist
         '/vrpn_mocap/RigidBody_1/pose',
         '/vrpn_mocap/RigidBody_2/pose',
         '/goal_pose',
         '/joint_states',
         '/ee_pose'
     ]
+
     bag_cmd_final = [
         'ros2', 'bag', 'record', *topics_to_record,
         '--output', LaunchConfiguration('bag_prefix'),
@@ -154,26 +161,36 @@ def generate_launch_description():
         '--max-bag-duration', LaunchConfiguration('max_bag_secs'),
         '--qos-profile-overrides-path', LaunchConfiguration('qos_overrides')
     ]
+
     bag_record = ExecuteProcess(cmd=bag_cmd_final, output='screen')
 
-    # Start bag after resolved_rate_controller (same moment as coordinator)
-    start_bag_after_rr = RegisterEventHandler(
-        OnProcessExit(target_action=rr, on_exit=[bag_record])
+    # Start bag when whole-body controller is active (same time as commander)
+    start_bag_after_wb = RegisterEventHandler(
+        OnProcessExit(target_action=wb_rr, on_exit=[bag_record])
     )
 
+    # Shutdown when ros2_control_node exits
     end_when_control_exits = RegisterEventHandler(
-        OnProcessExit(target_action=control_node, on_exit=[Shutdown(reason='ros2_control_node exited')])
+        OnProcessExit(
+            target_action=control_node,
+            on_exit=[Shutdown(reason='ros2_control_node exited')]
+        )
     )
 
     return LaunchDescription([
+        # Launch args
         DeclareLaunchArgument('use_sim_time',  default_value='false'),
         DeclareLaunchArgument('bag_prefix',    default_value='ombot_run1'),
         DeclareLaunchArgument('storage',       default_value='sqlite3'),
         DeclareLaunchArgument('compress',      default_value='zstd'),
-        DeclareLaunchArgument('qos_overrides', default_value='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'),
+        DeclareLaunchArgument(
+            'qos_overrides',
+            default_value='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'
+        ),
         DeclareLaunchArgument('max_bag_size',  default_value=str(1024*1024*1024)),
         DeclareLaunchArgument('max_bag_secs',  default_value='600'),
 
+        # Core nodes
         robot_state_publisher,
         control_node,
 
@@ -181,11 +198,13 @@ def generate_launch_description():
         mecanum_spawner,
         jsb,
         chain_imp_after_jsb,
-        chain_rr_after_imp,
+        chain_wb_after_imp,
 
-        # Start coord + bag once RR is active
-        start_coord_after_rr,
-        start_bag_after_rr,
+        goal_from_offset,
+
+        # Start commander + bag once WB controller is active
+        start_commander_after_wb,
+        start_bag_after_wb,
 
         end_when_control_exits,
     ])

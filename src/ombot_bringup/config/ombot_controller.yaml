@@ -23,6 +23,12 @@ controller_manager:
     resolved_rate_controller:
       type: ombot_controller/ResolvedRateController
 
+    joint_excitation_controller:
+      type: "ombot_controller/JointExcitationController"
+
+    wb_resolved_rate_controller:
+      type: ombot_controller/WholeBodyResolvedRateController
+
 joint_state_broadcaster:
   ros__parameters: {}
       
@@ -89,6 +95,26 @@ resolved_rate_controller:
     cmd_timeout: 0.25
     v_deadband: 0.0001
 
+wb_resolved_rate_controller:
+  ros__parameters:
+    joints: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6]
+    null_kp: [3.0, 3.0, 2.0, 1.0, 0.5, 0.3]
+    null_kd: [0.8, 0.8, 0.6, 0.4, 0.25, 0.2]
+    q_home:  [0.0, -0.66, 0.4, 0.0, 0.30, 0.0]
+    base_link: link_1
+    tip_link:  end_link
+    inner_controller: "joint_impedance_controller"
+    lambda: 0.03
+    qdot_limit: 2.0
+    step_limit: 0.2
+    dt_ceiling: 0.1
+    v_min: 0.018
+    err_deadband: 0.01
+    tau_lpf: 0.08
+    tau_rebase: 0.5
+    cmd_timeout: 0.25
+    v_deadband: 0.0001
+
 
 mecanum_controller:
   ros__parameters:
@@ -136,3 +162,16 @@ arm_base_coordinator:
 
     k_d: 3.0
     d_mid: 1.8
+
+joint_excitation_controller:
+  ros__parameters:
+    joints: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6]
+    amplitudes:    [0.0, 0.0, 0.0, 0.0, 0.0, 0.5]
+    effort_limits: [0.0, 0.0, 0.0, 0.0, 0.0, 0.8]
+    mode: "prbs"              # "prbs", "sine", or "chirp"
+    prbs_dwell: 0.05          # 50 ms per bit
+    sine_freq: 0.5            # Hz (if you use sine mode)
+    chirp_f_start: 0.1        # Hz (if you use chirp mode)
+    chirp_f_end: 5.0          # Hz
+    test_duration: 60.0       # s; 0 => run until you stop controller
+

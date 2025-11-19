@@ -14,6 +14,7 @@ find_package(trajectory_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(std_msgs REQUIRED)
+# find_package(hardware_interface REQUIRED)      
 find_package(kdl_parser REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -31,7 +32,9 @@ add_library(${PROJECT_NAME} SHARED
   src/effort_controller.cpp
   src/gravity_cancel_controller.cpp
   src/joint_impedance_controller.cpp
+  src/joint_excitation_controller.cpp
   src/resolved_rate_controller.cpp
+  src/wb_resolved_rate_controller.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

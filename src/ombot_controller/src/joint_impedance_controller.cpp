@@ -193,11 +193,13 @@ JointImpedanceController::on_configure(const rclcpp_lifecycle::State &)
     dyn_    = std::make_unique<KDL::ChainDynParam>(chain_, gravity_vec_);
     q_kdl_  = KDL::JntArray(N);
     g_kdl_  = KDL::JntArray(N);
-    fk_solver_ = std::make_unique<KDL::ChainFkSolverPos_recursive>(chain_);      
+    fk_solver_ = std::make_unique<KDL::ChainFkSolverPos_recursive>(chain_);
     ee_pub_ = std::make_shared<
       realtime_tools::RealtimePublisher<geometry_msgs::msg::PoseStamped>>(
         get_node()->create_publisher<geometry_msgs::msg::PoseStamped>(
-          ee_pose_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort()));      
+          ee_pose_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort()));  
+
+    
   }
 
   // ---- runtime buffers ----
