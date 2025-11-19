@@ -22,6 +22,7 @@ setup(
             'base_p_on_x = ombot_coordination.base_p_on_x:main',
             'arm_zero_twist = ombot_coordination.arm_zero_twist:main',
             'set_null_kp = ombot_coordination.set_null_kp:main',
+            'whole_body_task_commander = ombot_coordination.whole_body_task_commander:main',
         ],
     },
 )

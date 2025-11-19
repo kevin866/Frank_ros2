@@ -24,7 +24,7 @@
   <depend>rclcpp_lifecycle</depend>
   <depend>std_msgs</depend>
   <depend>kdl_parser</depend>
-
+  <!-- <depend>hardware_interface</depend> -->
 
   <depend>geometry_msgs</depend>
   <depend>std_srvs</depend>

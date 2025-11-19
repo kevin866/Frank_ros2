@@ -27,3 +27,9 @@
   durability: volatile
   history: keep_last
   depth: 10
+
+/ee_pose:
+  reliability: best_effort    # <- this is the important change
+  durability: volatile
+  history: keep_last
+  depth: 10

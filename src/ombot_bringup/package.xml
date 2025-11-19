@@ -18,6 +18,10 @@
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>rviz2</exec_depend>
   <exec_depend>xacro</exec_depend>
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+
 
   <!-- Your own packages (so bringup finds their files/classes) -->
   <exec_depend>ombot_description</exec_depend>

@@ -188,7 +188,7 @@ class ArmBaseCoordinator(Node):
         self._goal_latched = False  # NEW
         # If you prefer triggering off alpha instead of distance:
         self.use_alpha_for_retract = True
-        self.alpha_enter           = 0.7
+        self.alpha_enter           = 0.5
         self.alpha_exit            = 0.4
 
         self.retract_center_frac   = 0.30   # center at 30% of initial distance
