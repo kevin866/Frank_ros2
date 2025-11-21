@@ -399,9 +399,18 @@ OMBotBaseSystem::write(const rclcpp::Time &, const rclcpp::Duration &)
   // Send commands to Roboteq controllers, matching Python logic
   for (size_t i=0;i<2;i++) {
     std::string payload_front, payload_back;
+    // RCLCPP_INFO(
+    //   rclcpp::get_logger("OMBotBaseSystem"),
+    //   "deadman=%d  cmd_rad_s=[%.3f, %.3f, %.3f, %.3f]",
+    //   deadman_,
+    //   cmd_rad_s_[0], cmd_rad_s_[1], cmd_rad_s_[2], cmd_rad_s_[3]
+    // );
+
     if (deadman_) {
-      payload_front = "!G " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i])) + "_";
-      payload_back  = "!G " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i+2])) + "_";
+      // payload_front = "!G " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i])) + "_";
+      // payload_back  = "!G " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i+2])) + "_";
+      payload_front = "!S " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i])) + "_";
+      payload_back  = "!S " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i+2])) + "_";
     } else {
       payload_front = "!MS " + std::to_string(i+1) + "_";
       payload_back  = "!MS " + std::to_string(i+1) + "_";

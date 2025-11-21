@@ -250,13 +250,13 @@ class WholeBodyTaskCommander(Node):
         ])
 
         pb_b = R_wb.T @ pb_w   # base position in base frame (should be close to zero)
-        self.log.info(1.0, f"pb_b = {pb_b}", key="pb_b")
+        # self.log.info(1.0, f"pb_b = {pb_b}", key="pb_b")
         # 2) Rotation matrices in BASE frame
         R_be = quat_to_rotmat(*qe_b)   # base -> ee
         R_bg = quat_to_rotmat(*qg_b)   # base -> goal
 
-        self.log.info(1.0, f"R_be (base->ee) = {R_be}", key="R_be")
-        self.log.info(1.0, f"R_bg (base->goal) = {R_bg}", key="R_bg")
+        # self.log.info(1.0, f"R_be (base->ee) = {R_be}", key="R_be")
+        # self.log.info(1.0, f"R_bg (base->goal) = {R_bg}", key="R_bg")
 
         # 3) Relative rotation ee -> goal, expressed in base
         # R_eb = R_be^T, then R_eg = R_eb * R_bg
@@ -274,9 +274,6 @@ class WholeBodyTaskCommander(Node):
         ]
 
         self.log.info(1.0, f"e_pos_b = {e_pos_b}", key="e_pos_b")
-
-
-
 
         # 4) Orientation error in base frame:
         #   R_be = R_bw * R_we
@@ -324,7 +321,14 @@ class WholeBodyTaskCommander(Node):
         msg.twist.angular.y = float(wy)
         msg.twist.angular.z = float(wz)
 
-        # self.pub_twist.publish(msg)
+        self.pub_twist.publish(msg)
+        self.log.info(
+            1.0,
+            f"twist = lin({vx:.3f}, {vy:.3f}, {vz:.3f}), "
+            f"ang({wx:.3f}, {wy:.3f}, {wz:.3f})",
+            key="twist_cmd"
+        )
+
 
 
 def main(args=None):

@@ -13,7 +13,7 @@ int main(int argc, char ** argv)
   // Message setup
   geometry_msgs::msg::TwistStamped cmd;
   cmd.header.frame_id = "base_link";
-  cmd.twist.linear.x = 2;   // forward speed (m/s)
+  cmd.twist.linear.x = 0.4;   // forward speed (m/s)
   cmd.twist.linear.y = 0.0;
   cmd.twist.angular.z = 0.0;
 

@@ -464,7 +464,7 @@ WholeBodyResolvedRateController::update_and_write_commands(
     geometry_msgs::msg::TwistStamped base_cmd;
     base_cmd.header.stamp = now;
     base_cmd.header.frame_id = base_link_;
-    base_cmd_pub_->publish(base_cmd);  // all zeros by default
+    // base_cmd_pub_->publish(base_cmd);  // all zeros by default
 
     write_refs_to_slots();
     return controller_interface::return_type::OK;
@@ -475,7 +475,7 @@ WholeBodyResolvedRateController::update_and_write_commands(
     geometry_msgs::msg::TwistStamped base_cmd;
     base_cmd.header.stamp = now;
     base_cmd.header.frame_id = base_link_;
-    base_cmd_pub_->publish(base_cmd);
+    // base_cmd_pub_->publish(base_cmd);
     // FK failed; just bail out gracefully
     write_refs_to_slots();
     return controller_interface::return_type::OK;
@@ -491,7 +491,7 @@ WholeBodyResolvedRateController::update_and_write_commands(
     geometry_msgs::msg::TwistStamped base_cmd;
     base_cmd.header.stamp = now;
     base_cmd.header.frame_id = base_link_;
-    base_cmd_pub_->publish(base_cmd);
+    // base_cmd_pub_->publish(base_cmd);
     return controller_interface::return_type::OK;
   }
 
@@ -510,6 +510,12 @@ WholeBodyResolvedRateController::update_and_write_commands(
   Jb(1,2) =  r_be.x();
   Jb(5,2) = 1.0;            // yaw rate at EE
 
+
+  // After filling Jb normally:
+  double k_base = base_cmd_scale_;  // same factor as you multiply the command with
+  Jb *= k_base;
+
+
   // Whole-body J: [ J_base | J_arm ]  (6 x (3+N))
   Eigen::Matrix<double, 6, Eigen::Dynamic> Jwhole(6, 3 + N);
   Jwhole.block<6,3>(0,0)       = Jb;
@@ -526,20 +532,61 @@ WholeBodyResolvedRateController::update_and_write_commands(
     (now - last_cmd_time_).seconds(), timed_out, int(cmd_cached_.valid), v.norm());
 
 
-  // 5) Damped resolved-rate: qdot = J^T (J J^T + λ^2 I)^-1 v
-  const double lam2 = lambda_ * lambda_;
 
-  // Jwhole * Jwhole^T  (6x6)
-  Eigen::Matrix<double, 6, 6> JJt = Jwhole * Jwhole.transpose();
+
+
+  // 5) Weighted damped resolved-rate: minimize ||J u - v||^2 + λ^2 ||W u||^2
+  // We implement this by column-scaling J: J_scaled = J * W^{-1}
+  const double lam2 = lambda_ * lambda_;
+  const int M = static_cast<int>(3 + N);  // total DOFs: 3 base + N joints
+
+  // DOF weights: larger = more expensive motion on that DOF
+  Eigen::VectorXd w(M);
+  // First 3 entries: base DOFs [vx, vy, wz]
+  w.segment<3>(0).setConstant(base_weight_);
+  // Remaining N entries: arm joints
+  w.segment(M - static_cast<int>(N), static_cast<int>(N)).setConstant(arm_weight_);
+
+  Eigen::VectorXd inv_w = w.cwiseInverse();  // W^{-1} diagonal entries
+
+  // Column-scaled whole-body Jacobian: J_scaled = Jwhole * W^{-1}
+  Eigen::MatrixXd J_scaled = Jwhole;  // 6 x M
+  for (int j = 0; j < M; ++j) {
+    J_scaled.col(j) *= inv_w(j);
+  }
+
+  // A = J_scaled J_scaled^T + λ^2 I (6x6)
+  Eigen::Matrix<double, 6, 6> JJt = J_scaled * J_scaled.transpose();
   Eigen::Matrix<double, 6, 6> A   = JJt + lam2 * Eigen::Matrix<double, 6, 6>::Identity();
   auto solver = A.ldlt();
 
-  // Whole-body velocity u = [v_base; qdot]
-  Eigen::VectorXd u = Jwhole.transpose() * solver.solve(v);
+  // Solve in scaled coordinates: u' = J_scaled^T (A^{-1} v)
+  Eigen::VectorXd u_prime = J_scaled.transpose() * solver.solve(v);
+
+  // Back to original coordinates: u = W^{-1} u'
+  Eigen::VectorXd u = inv_w.asDiagonal() * u_prime;
 
   // Split base and arm components
   Eigen::Vector3d v_base = u.head<3>();
   Eigen::VectorXd qdot   = u.tail(N);
+
+
+
+
+  // // 5) Damped resolved-rate: qdot = J^T (J J^T + λ^2 I)^-1 v
+  // const double lam2 = lambda_ * lambda_;
+
+  // // Jwhole * Jwhole^T  (6x6)
+  // Eigen::Matrix<double, 6, 6> JJt = Jwhole * Jwhole.transpose();
+  // Eigen::Matrix<double, 6, 6> A   = JJt + lam2 * Eigen::Matrix<double, 6, 6>::Identity();
+  // auto solver = A.ldlt();
+
+  // // Whole-body velocity u = [v_base; qdot]
+  // Eigen::VectorXd u = Jwhole.transpose() * solver.solve(v);
+
+  // // Split base and arm components
+  // Eigen::Vector3d v_base = u.head<3>();
+  // Eigen::VectorXd qdot   = u.tail(N);
 
 
 
@@ -562,48 +609,87 @@ WholeBodyResolvedRateController::update_and_write_commands(
   // }
 
   // 6) Nullspace posture bias: qdot += Nproj * u_posture
-  if (posture_active) {
+  // if (posture_active) {
 
-    const int M = 3 + N;  // whole-body DOFs
+  //   const int M = 3 + N;  // whole-body DOFs
 
-    Eigen::MatrixXd Iwb = Eigen::MatrixXd::Identity(M, M);
-    Eigen::MatrixXd Nproj = Iwb - Jwhole.transpose() * solver.solve(Jwhole);
+  //   Eigen::MatrixXd Iwb = Eigen::MatrixXd::Identity(M, M);
+  //   Eigen::MatrixXd Nproj = Iwb - Jwhole.transpose() * solver.solve(Jwhole);
   
 
+  //   Eigen::VectorXd u_posture(M);
+  //   u_posture.setZero();
+
+  //   // joint-only part (skip base elements)
+  //   for (size_t i = 0; i < N; ++i) {
+  //     double e  = q_home_[i] - q_kdl_(i);
+  //     double ed = -dq_kdl_(i);
+  //     double ui = null_kp_[i] * e + null_kd_[i] * ed;
+
+  //     // (optional nonlinear scaling like your null_scale_adapt)
+  //     // ui *= null_scale_adapt;
+
+  //     ui = std::clamp(ui, -qdot_limit_, qdot_limit_);
+  //     u_posture(3 + i) = ui;  // first 3 = base, then joints
+  //   }
+
+  //   // Add projected nullspace motion
+  //   u += Nproj * u_posture;
+
+  //   // Re-split
+  //   v_base = u.head<3>();
+  //   qdot   = u.tail(N);
+
+  //   // Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n", "[", "]");
+
+  //   // RCLCPP_INFO_STREAM_THROTTLE(
+  //   //     get_node()->get_logger(),
+  //   //     *get_node()->get_clock(),
+  //   //     100,  // ms
+  //   //     "Nproj =\n" << Nproj.format(fmt));
+
+  //   // add projected nullspace motion
+  //   // qdot += Nproj * u_posture;
+  //   // qdot += u_posture;
+  // }
+
+    // 6) Nullspace posture bias: u_final = u_task + N'_proj * u_posture' (in scaled coords)
+  if (posture_active) {
+
+    Eigen::MatrixXd Iwb = Eigen::MatrixXd::Identity(M, M);
+
+    // Nullspace projector in scaled coordinates:
+    // N'_proj = I - J_scaled^T (J_scaled J_scaled^T + λ^2 I)^{-1} J_scaled
+    Eigen::MatrixXd Nproj_prime = Iwb - J_scaled.transpose() * solver.solve(J_scaled);
+
+    // Posture command in original coordinates (joint-only)
     Eigen::VectorXd u_posture(M);
     u_posture.setZero();
 
-    // joint-only part (skip base elements)
     for (size_t i = 0; i < N; ++i) {
       double e  = q_home_[i] - q_kdl_(i);
       double ed = -dq_kdl_(i);
       double ui = null_kp_[i] * e + null_kd_[i] * ed;
 
-      // (optional nonlinear scaling like your null_scale_adapt)
-      ui *= null_scale_adapt;
-
+      // ui *= null_scale_adapt;  // adaptive scaling vs task magnitude
       ui = std::clamp(ui, -qdot_limit_, qdot_limit_);
-      u_posture(3 + i) = ui;  // first 3 = base, then joints
+
+      // posture only on joints; base elements remain 0
+      u_posture(3 + static_cast<int>(i)) = ui;
     }
 
-    // Add projected nullspace motion
-    u += Nproj * u_posture;
+    // Convert posture command to scaled coordinates: u_posture' = W * u_posture
+    Eigen::VectorXd u_posture_prime = w.asDiagonal() * u_posture;
 
-    // Re-split
+    // Add projected nullspace motion in scaled coords
+    u_prime = u_prime + Nproj_prime * u_posture_prime;
+
+    // Back to original coordinates
+    u = inv_w.asDiagonal() * u_prime;
+
+    // Re-split base / joints
     v_base = u.head<3>();
     qdot   = u.tail(N);
-
-    // Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n", "[", "]");
-
-    // RCLCPP_INFO_STREAM_THROTTLE(
-    //     get_node()->get_logger(),
-    //     *get_node()->get_clock(),
-    //     100,  // ms
-    //     "Nproj =\n" << Nproj.format(fmt));
-
-    // add projected nullspace motion
-    // qdot += Nproj * u_posture;
-    // qdot += u_posture;
   }
 
 
@@ -636,21 +722,49 @@ WholeBodyResolvedRateController::update_and_write_commands(
     geometry_msgs::msg::TwistStamped base_cmd;
     base_cmd.header.stamp = now;
     base_cmd.header.frame_id = base_link_;  // e.g. "base_link"
-    base_cmd.twist.linear.x  = v_base[0];
-    base_cmd.twist.linear.y  = v_base[1];
+    base_cmd.twist.linear.x  = k_base * v_base[0];
+    base_cmd.twist.linear.y  = k_base * v_base[1];
     base_cmd.twist.linear.z  = 0.0;
     base_cmd.twist.angular.x = 0.0;
     base_cmd.twist.angular.y = 0.0;
-    base_cmd.twist.angular.z = v_base[2];
-    base_cmd_pub_->publish(base_cmd);
+    base_cmd.twist.angular.z = k_base * v_base[2];
+    // base_cmd_pub_->publish(base_cmd);
+
+
+
+
+    // RCLCPP_INFO_THROTTLE(
+    // get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    // "WB: ||v||=%.3f  ||u||=%.3f  ||v_base||=%.3f  ||qdot||=%.3f  r_be=(%.3f, %.3f)",
+    // v.norm(), u.norm(), v_base.norm(), qdot.norm(), r_be.x(), r_be.y());
+    RCLCPP_INFO_THROTTLE(
+        get_node()->get_logger(), *get_node()->get_clock(), 1000,
+        "WB: v_base=(%.3f %.3f %.3f)  qdot=(%.3f %.3f %.3f %.3f %.3f %.3f)  r_be=(%.3f %.3f)",
+        v_base.x(), v_base.y(), v_base.z(),
+        qdot[0], qdot[1], qdot[2], qdot[3], qdot[4], qdot[5],
+        r_be.x(), r_be.y()
+    );
+
+    // v_ee contribution from arm joints
+    Eigen::Matrix<double, 6, 1> v_ee_arm = Je * qdot;
+
+    // v_ee contribution from base
+    Eigen::Matrix<double, 6, 1> v_ee_base = Jb * v_base;
+
+    // total
+    Eigen::Matrix<double, 6, 1> v_ee_tot = v_ee_arm + v_ee_base;
 
     RCLCPP_INFO_THROTTLE(
-    get_node()->get_logger(), *get_node()->get_clock(), 500,
-    "WB: ||v||=%.3f  ||u||=%.3f  ||v_base||=%.3f  ||qdot||=%.3f  r_be=(%.3f, %.3f)",
-    v.norm(), u.norm(), v_base.norm(), qdot.norm(), r_be.x(), r_be.y());
+        get_node()->get_logger(), *get_node()->get_clock(), 1000,
+        "EE: v_arm=(%.3f %.3f %.3f | %.3f %.3f %.3f)  v_base=(%.3f %.3f %.3f | %.3f %.3f %.3f)  v_cmd=(%.3f %.3f %.3f | %.3f %.3f %.3f)",
+        v_ee_arm(0), v_ee_arm(1), v_ee_arm(2), v_ee_arm(3), v_ee_arm(4), v_ee_arm(5),
+        v_ee_base(0), v_ee_base(1), v_ee_base(2), v_ee_base(3), v_ee_base(4), v_ee_base(5),
+        v(0), v(1), v(2), v(3), v(4), v(5)
+    );
 
 
-    write_refs_to_slots();  // fills pos_ref_slots_[i].value / vel_ref_slots_[i].value
+
+    // write_refs_to_slots();  // fills pos_ref_slots_[i].value / vel_ref_slots_[i].value
     return controller_interface::return_type::OK;
   }
 

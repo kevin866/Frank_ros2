@@ -94,6 +94,11 @@ private:
   const double ema_alpha_ = 0.8; // 0..1, higher = quicker response
 
 
+  // In wb_resolved_rate_controller.hpp
+  double base_weight_{3.0};  // cost weight for base DOFs
+  double arm_weight_{1.0};   // cost weight for arm joints
+  double base_cmd_scale_ = 0.2;  // or 3.0, tune this
+
 
 
   // KDL / kinematics
