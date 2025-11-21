@@ -93,7 +93,7 @@ def generate_launch_description():
         parameters=[{
             'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
             'goal_pose_topic': '/goal_pose',
-            'offset_xyz': [1.0, 1.0, 0.0],   # set your desired offset here (world frame)
+            'offset_xyz': [1.0, 0.0, 0.0],   # set your desired offset here (world frame)
             'latch': True,                   # True = latch once, False = follow base
         }]
     )
