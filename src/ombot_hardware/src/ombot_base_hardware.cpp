@@ -346,11 +346,27 @@ OMBotBaseSystem::read(const rclcpp::Time &, const rclcpp::Duration &period)
     bool ok_rpm = false;
     double motor_rpm = 0.0;
     if (!s.empty()) {
+      // RCLCPP_INFO(
+      //     rclcpp::get_logger("OMBotBaseSystem"),
+      //     "Raw ?S reply (wheel %zu): '%s'",
+      //     i, s.c_str()
+      // );
       try { motor_rpm = std::stod(s); ok_rpm = true; } catch (...) {}
     }
     if (ok_rpm) {
       vel_rad_s_[i] = wheelRadPerSec_from_motorRPM(motor_rpm);  // includes gear ratio inside helper
+      // RCLCPP_INFO(
+      //   rclcpp::get_logger("OMBotBaseSystem"),
+      //   "Wheel %zu vel_rad_s = %.3f rad/s",
+      //   i, vel_rad_s_[i]
+      // );
+    }else {
+      // vel_rad_s_[i] = 0.0;  // or leave as-is if you prefer hold-last
+      vel_rad_s_[i] = cmd_rad_s_[i];
+
     }
+    
+
 
     // --- Staggered true position refresh ---
     // Each wheel refreshes on a different cycle so only 1 wheel (typically) does ?C this tick.

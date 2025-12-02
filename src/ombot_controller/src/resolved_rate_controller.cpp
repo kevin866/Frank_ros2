@@ -460,8 +460,8 @@ ResolvedRateController::update_and_write_commands(
 
   double null_scale_adapt = 20.0 * std::pow(1.0 - task_mag, 3.0);
 
-  RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-    "||qdot||=%.3f  qdot[0]=%.3f  dt=%.3f  step_limit=%.3f", qdot.norm(), qdot(0), dt, step_limit_);
+  // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+  //   "||qdot||=%.3f  qdot[0]=%.3f  dt=%.3f  step_limit=%.3f", qdot.norm(), qdot(0), dt, step_limit_);
 
 
 
@@ -497,9 +497,9 @@ ResolvedRateController::update_and_write_commands(
       ui = std::clamp(ui, -qdot_limit_, qdot_limit_);
       u_posture(i) = ui;
     }
-
+  
     // Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n", "[", "]");
-
+    
     // RCLCPP_INFO_STREAM_THROTTLE(
     //     get_node()->get_logger(),
     //     *get_node()->get_clock(),
@@ -543,3 +543,8 @@ ResolvedRateController::update_and_write_commands(
 } // namespace ombot_controller
 
 PLUGINLIB_EXPORT_CLASS(ombot_controller::ResolvedRateController, controller_interface::ChainableControllerInterface)
+
+
+
+
+

@@ -193,10 +193,10 @@ class WholeBodyTaskCommander(Node):
         self.last_time = self.get_clock().now()
         self.timer = self.create_timer(0.01, self.spin)  # 100 Hz
 
-        self.get_logger().info(
-            f"WholeBodyTaskCommander: base={base_pose_topic}, ee={ee_pose_topic}, "
-            f"goal={goal_pose_topic}, twist_out={ee_twist_topic}"
-        )
+        # self.get_logger().info(
+        #     f"WholeBodyTaskCommander: base={base_pose_topic}, ee={ee_pose_topic}, "
+        #     f"goal={goal_pose_topic}, twist_out={ee_twist_topic}"
+        # )
 
     # --- Callbacks for poses ---
 
@@ -236,6 +236,8 @@ class WholeBodyTaskCommander(Node):
         
         # 1) Extract poses in BASE frame (rename to make this explicit)
         pe_b = self.ee.p     # base -> ee position
+        # self.log.info(1.0, f"pe_b = {pe_b}", key="pe_b")
+
         qe_b = self.ee.q     # base -> ee orientation (quaternion)
 
         pg_b = self.goal.p   # base -> goal position
@@ -246,7 +248,7 @@ class WholeBodyTaskCommander(Node):
         R_wb = np.array([
             [1.0,  0.0,  0.0],
             [0.0,  0.0, 1.0],
-            [0.0,  1.0,  0.0],
+            [0.0,  -1.0,  0.0],
         ])
 
         pb_b = R_wb.T @ pb_w   # base position in base frame (should be close to zero)
@@ -264,7 +266,7 @@ class WholeBodyTaskCommander(Node):
         R_err  = rotmat_mul(R_be_T, R_bg)    # ee -> goal, expressed in base
 
         e_rot_b = rotmat_to_rotvec(R_err)    # rotational error (axis-angle) in base
-        self.log.info(1.0, f"e_rot_b = {e_rot_b}", key="e_rot_b")
+        # self.log.info(1.0, f"e_rot_b = {e_rot_b}", key="e_rot_b")
 
         # 4) Position error in base frame: e_pos_b = p_g^b - p_e^b
         e_pos_b = [
@@ -272,6 +274,8 @@ class WholeBodyTaskCommander(Node):
             pg_b[1] - pe_b[1] - pb_b[1],
             pg_b[2] - pe_b[2] - pb_b[2],
         ]
+        # e_pos_b = np.array([e_pos_b[0], 0.0, 0.0])  # only X
+
 
         self.log.info(1.0, f"e_pos_b = {e_pos_b}", key="e_pos_b")
 
@@ -322,12 +326,12 @@ class WholeBodyTaskCommander(Node):
         msg.twist.angular.z = float(wz)
 
         self.pub_twist.publish(msg)
-        self.log.info(
-            1.0,
-            f"twist = lin({vx:.3f}, {vy:.3f}, {vz:.3f}), "
-            f"ang({wx:.3f}, {wy:.3f}, {wz:.3f})",
-            key="twist_cmd"
-        )
+        # self.log.info(
+        #     1.0,
+        #     f"twist = lin({vx:.3f}, {vy:.3f}, {vz:.3f}), "
+        #     f"ang({wx:.3f}, {wy:.3f}, {wz:.3f})",
+        #     key="twist_cmd"
+        # )
 
 
 

@@ -2,10 +2,10 @@ rosbag2_bagfile_information:
   version: 5
   storage_identifier: sqlite3
   duration:
-    nanoseconds: 28600141244
+    nanoseconds: 73655770972
   starting_time:
-    nanoseconds_since_epoch: 1763516229692150513
-  message_count: 6899
+    nanoseconds_since_epoch: 1764206728396610177
+  message_count: 21699
   topics_with_message_count:
     - topic_metadata:
         name: /vrpn_mocap/RigidBody_2/pose
@@ -18,37 +18,37 @@ rosbag2_bagfile_information:
         type: geometry_msgs/msg/PoseStamped
         serialization_format: cdr
         offered_qos_profiles: "- history: 1\n  depth: 1\n  reliability: 2\n  durability: 2\n  deadline:\n    sec: 9223372036\n    nsec: 854775807\n  lifespan:\n    sec: 9223372036\n    nsec: 854775807\n  liveliness: 1\n  liveliness_lease_duration:\n    sec: 9223372036\n    nsec: 854775807\n  avoid_ros_namespace_conventions: false"
-      message_count: 2748
+      message_count: 7179
     - topic_metadata:
         name: /wb_resolved_rate_controller/ee_twist
         type: geometry_msgs/msg/TwistStamped
         serialization_format: cdr
         offered_qos_profiles: "- history: 1\n  depth: 10\n  reliability: 1\n  durability: 2\n  deadline:\n    sec: 9223372036\n    nsec: 854775807\n  lifespan:\n    sec: 9223372036\n    nsec: 854775807\n  liveliness: 1\n  liveliness_lease_duration:\n    sec: 9223372036\n    nsec: 854775807\n  avoid_ros_namespace_conventions: false"
-      message_count: 0
+      message_count: 7280
     - topic_metadata:
         name: /ee_pose
         type: geometry_msgs/msg/PoseStamped
         serialization_format: cdr
         offered_qos_profiles: "- history: 1\n  depth: 1\n  reliability: 2\n  durability: 2\n  deadline:\n    sec: 9223372036\n    nsec: 854775807\n  lifespan:\n    sec: 9223372036\n    nsec: 854775807\n  liveliness: 1\n  liveliness_lease_duration:\n    sec: 9223372036\n    nsec: 854775807\n  avoid_ros_namespace_conventions: false"
-      message_count: 1193
+      message_count: 2883
     - topic_metadata:
         name: /goal_pose
         type: geometry_msgs/msg/PoseStamped
         serialization_format: cdr
         offered_qos_profiles: "- history: 1\n  depth: 10\n  reliability: 1\n  durability: 2\n  deadline:\n    sec: 9223372036\n    nsec: 854775807\n  lifespan:\n    sec: 9223372036\n    nsec: 854775807\n  liveliness: 1\n  liveliness_lease_duration:\n    sec: 9223372036\n    nsec: 854775807\n  avoid_ros_namespace_conventions: false"
-      message_count: 572
+      message_count: 1473
     - topic_metadata:
         name: /joint_states
         type: sensor_msgs/msg/JointState
         serialization_format: cdr
         offered_qos_profiles: "- history: 1\n  depth: 1\n  reliability: 1\n  durability: 2\n  deadline:\n    sec: 9223372036\n    nsec: 854775807\n  lifespan:\n    sec: 9223372036\n    nsec: 854775807\n  liveliness: 1\n  liveliness_lease_duration:\n    sec: 9223372036\n    nsec: 854775807\n  avoid_ros_namespace_conventions: false"
-      message_count: 1193
+      message_count: 2884
     - topic_metadata:
         name: /mecanum_controller/reference
         type: geometry_msgs/msg/TwistStamped
         serialization_format: cdr
         offered_qos_profiles: "- history: 1\n  depth: 1\n  reliability: 1\n  durability: 2\n  deadline:\n    sec: 9223372036\n    nsec: 854775807\n  lifespan:\n    sec: 9223372036\n    nsec: 854775807\n  liveliness: 1\n  liveliness_lease_duration:\n    sec: 9223372036\n    nsec: 854775807\n  avoid_ros_namespace_conventions: false"
-      message_count: 1193
+      message_count: 0
   compression_format: zstd
   compression_mode: FILE
   relative_file_paths:
@@ -56,7 +56,7 @@ rosbag2_bagfile_information:
   files:
     - path: ombot_run1_0.db3
       starting_time:
-        nanoseconds_since_epoch: 1763516229692150513
+        nanoseconds_since_epoch: 1764206728396610177
       duration:
-        nanoseconds: 28600141244
-      message_count: 6899
+        nanoseconds: 73655770972
+      message_count: 21699

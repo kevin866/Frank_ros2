@@ -12,9 +12,9 @@ class TwistStampedPublisher(Node):
         msg = TwistStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'base_link'
-        msg.twist.linear.x = -2.0
-        msg.twist.linear.y = 0.0
-        msg.twist.angular.z = 0.0
+        msg.twist.linear.x = -0.5
+        msg.twist.linear.y = 0.005
+        msg.twist.angular.z = 0.011
         self.pub.publish(msg)
 
 def main():
