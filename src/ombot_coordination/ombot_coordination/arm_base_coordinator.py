@@ -23,6 +23,7 @@ def quat_to_rotvec(qx, qy, qz, qw) -> Tuple[float,float,float]:
     return (ax*ang, ay*ang, az*ang)
 
 def quat_conj(q): x,y,z,w=q; return (-x,-y,-z,w)
+
 def quat_mul(a,b):
     ax,ay,az,aw=a; bx,by,bz,bw=b
     return (aw*bx+ax*bw+ay*bz-az*by,
@@ -465,8 +466,6 @@ class ArmBaseCoordinator(Node):
                 self.retract_mode = False
                 self.get_logger().info(f"✅ Exited RETRACT (alpha={alpha:.2f})")
 
-
-
         if self.base_cmd_sat_distance > 0.0:
             scale_alpha = clamp(e_xy / max(self.base_cmd_sat_distance, 1e-6), 0.0, 1.0)
         else:
@@ -476,10 +475,12 @@ class ArmBaseCoordinator(Node):
 
         # 5) Base allocation
         b_vx, b_vy, b_wz = alpha * vx_task, alpha * vy_task, alpha * wz_task
+        # b_vx, b_vy, b_wz =  vx_task, vy_task, wz_task
+        # base_scale = 1.0
 
-        b_vx *= base_scale
-        b_vy *= base_scale
-        b_wz *= base_scale
+        # b_vx *= base_scale
+        # b_vy *= base_scale
+        # b_wz *= base_scale
         # self.get_logger().info(
         #     f"Base cmd (pre-limit): vx={b_vx:.3f}, vy={b_vy:.3f}, wz={b_wz:.3f}, alpha={alpha:.3f}"
         # )
@@ -582,11 +583,11 @@ class ArmBaseCoordinator(Node):
         twa.twist.angular.x, twa.twist.angular.y, twa.twist.angular.z = float(arm_wx), float(arm_wy), float(arm_wz)
         if not self.retract_mode:
             self.pub_ee_twist.publish(twa)
-        self.log.info(0.5,
-            f"[{twa.header.frame_id}] arm_vx={arm_vx:.3f}, arm_vy={arm_vy:.3f}, arm_vz={arm_vz:.3f}, "
-            f"wx={arm_wx:.3f}, wy={arm_wy:.3f}, wz={arm_wz:.3f}",
-            key="arm_twist"
-        )
+        # self.log.info(0.5,
+        #     f"[{twa.header.frame_id}] arm_vx={arm_vx:.3f}, arm_vy={arm_vy:.3f}, arm_vz={arm_vz:.3f}, "
+        #     f"wx={arm_wx:.3f}, wy={arm_wy:.3f}, wz={arm_wz:.3f}",
+        #     key="arm_twist"
+        # )
 
 
     # end class

@@ -95,7 +95,7 @@ def generate_launch_description():
 
             'use_offset_goal': True,
             'offset_frame': 'world',
-            'offset_xyz': [-1.0, 0.0, -1.0],
+            'offset_xyz': [1.0, 0.0, 0.0],
 
             'ee_twist_topic': '/resolved_rate_controller/ee_twist',
 

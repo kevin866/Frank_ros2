@@ -61,9 +61,10 @@ private:
   // double err_db_{0.01};   // rad
   // double v_min_  = 0.03;   // rad/s
   // double tau_rebase_{0.5};
+
   // === Resolved-rate controller tuning (100 Hz) ===
-  double lambda_{0.01};        // DLS damping; 0.01–0.05 is typical
-  double qdot_limit_{0.4};     // rad/s per joint speed limit (bump to 1.0 if safe)
+  double lambda_{0.3};        // DLS damping; 0.01–0.05 is typical
+  double qdot_limit_{1.0};     // rad/s per joint speed limit (bump to 1.0 if safe)
   double integ_limit_{0.20};   // rad clamp for integrated posture/error (anti-windup)
   double dt_ceiling_{0.03};    // s; cap dt used for integration (100 Hz -> 0.01, allow spikes to 0.03)
 
@@ -95,9 +96,14 @@ private:
 
 
   // In wb_resolved_rate_controller.hpp
-  double base_weight_{3.0};  // cost weight for base DOFs
+  double base_weight_{1.0};  // cost weight for base DOFs
   double arm_weight_{1.0};   // cost weight for arm joints
-  double base_cmd_scale_ = 0.2;  // or 3.0, tune this
+  double base_cmd_scale_ = 3.0;  // or 3.0, tune this
+  double v_lin_scale_ = 10.0;    // scale linear velocities
+  // double v_ang_scale_ = 0.000001;    // scale angular velocities
+
+  // double v_lin_scale_ = 0.2;
+  double v_ang_scale_ = 0.1;
 
 
 

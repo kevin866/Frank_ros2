@@ -22,7 +22,7 @@ class GoalFromOffset(Node):
         self.R_wb = np.array([
             [1.0,  0.0,  0.0],
             [0.0,  0.0, 1.0],
-            [0.0,  1.0,  0.0],
+            [0.0,  -1.0,  0.0],
         ])
         # base -> world
         self.R_bw = self.R_wb.T

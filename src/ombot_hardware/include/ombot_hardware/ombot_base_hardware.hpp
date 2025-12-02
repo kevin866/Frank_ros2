@@ -111,6 +111,86 @@ public:
     return out;
   }
 
+// std::string query_raw(const std::string &cmd)
+// {
+//   if (!driver_ || !driver_->port() || !driver_->port()->is_open()) {
+//     return "";
+//   }
+
+//   // 1) Flush any stale bytes in RX buffer (echoes from previous !S, etc.)
+//   {
+//     std::vector<uint8_t> flush_buf(64);
+//     while (true) {
+//       size_t n = driver_->port()->receive(flush_buf);
+//       if (n == 0) break;  // nothing left
+//     }
+//   }
+
+//   // 2) Build TX (ensure terminator)
+//   std::string tx = cmd;
+//   if (!tx.empty() && tx.back() != '_' && tx.back() != '\r') {
+//     tx.push_back('\r');
+//   }
+//   std::vector<uint8_t> tx_bytes(tx.begin(), tx.end());
+//   driver_->port()->send(tx_bytes);
+
+//   // 3) Read lines until we get a "data" line or timeout
+//   std::string out;
+//   std::vector<uint8_t> buf(64);
+//   auto t0 = std::chrono::steady_clock::now();
+//   auto budget = std::chrono::milliseconds(20);  // a bit more generous
+
+//   auto trim = [](std::string &s) {
+//     auto start = s.find_first_not_of(" \r\n");
+//     auto end   = s.find_last_not_of(" \r\n");
+//     if (start == std::string::npos) { s.clear(); return; }
+//     s = s.substr(start, end - start + 1);
+//   };
+
+//   // command prefix without terminator (for detecting echo)
+//   std::string cmd_no_term = cmd;
+//   while (!cmd_no_term.empty() && (cmd_no_term.back() == '_' || cmd_no_term.back() == '\r')) {
+//     cmd_no_term.pop_back();
+//   }
+
+//   while (std::chrono::steady_clock::now() - t0 < budget) {
+//     size_t n = driver_->port()->receive(buf);
+//     if (n == 0) {
+//       std::this_thread::sleep_for(std::chrono::milliseconds(1));
+//       continue;
+//     }
+
+//     for (size_t i = 0; i < n; ++i) {
+//       char c = static_cast<char>(buf[i]);
+//       if (c == '_' || c == '\r' || c == '\n') {
+//         // We have a line in 'out'
+//         trim(out);
+//         if (!out.empty()) {
+//           // Skip echo lines: those that start with the command or start with '!'/'?'
+//           bool looks_like_echo = false;
+//           if (!cmd_no_term.empty() && out.rfind(cmd_no_term, 0) == 0) {
+//             looks_like_echo = true;
+//           } else if (!out.empty() && (out[0] == '!' || out[0] == '?')) {
+//             looks_like_echo = true;
+//           }
+
+//           if (!looks_like_echo) {
+//             return out;  // return the first non-echo line
+//           }
+//         }
+//         // Reset buffer for next line
+//         out.clear();
+//       } else {
+//         out.push_back(c);
+//       }
+//     }
+//   }
+
+//   // timeout: no good data line, return empty
+//   return "";
+// }
+
+
   // --- convenience commands (ASCII) ---
   // Send a speed command (example: "!G <ch> <value>\r")
   bool write_speed(int ch, double rpm) {

@@ -433,8 +433,8 @@ WholeBodyResolvedRateController::update_and_write_commands(
         q_ref_[i] += dq_clamped;
         err_norm  += e * e;
         qdot_norm += qdot_ref_[i] * qdot_ref_[i]; 
-        RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-          "dq_raw=%.4f  dq_clamped=%.4f", dq_raw, dq_clamped);
+        // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+        //   "dq_raw=%.4f  dq_clamped=%.4f", dq_raw, dq_clamped);
 
         // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
         //   "dq_raw=%.4f  dq_clamped=%.4f", dq_raw, dq_clamped);
@@ -445,10 +445,10 @@ WholeBodyResolvedRateController::update_and_write_commands(
       //   1000,                                   // ms between prints
       //   "Nullspace active: ||err||=%.4f  ||qdot_ref||=%.4f  null_kp=%.3f",
       // //   err_norm, qdot_norm, null_kp_);
-      // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-      //   "NS: dt=%.4f dt_used=%.4f ||qdot_ref||=%.4f step_limit=%.4f sat_step=%zu/%zu",
-      //   dt, dt_used, Eigen::Map<Eigen::VectorXd>(qdot_ref_.data(), N).norm(),
-      //   step_limit_, sat_step, N);
+      RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+        "NS: dt=%.4f dt_used=%.4f ||qdot_ref||=%.4f step_limit=%.4f sat_step=%zu/%zu",
+        dt, dt_used, Eigen::Map<Eigen::VectorXd>(qdot_ref_.data(), N).norm(),
+        step_limit_, sat_step, N);
 
 
     } else {
@@ -521,19 +521,17 @@ WholeBodyResolvedRateController::update_and_write_commands(
   Jwhole.block<6,3>(0,0)       = Jb;
   Jwhole.block(0,3,6,N)        = Je;
 
+  double v_lin_gain = v_lin_scale_;   // e.g. 1.0, 2.0, 5.0
+  double v_ang_gain = v_ang_scale_;   // maybe smaller than linear
+
   Eigen::Matrix<double, 6, 1> v;
   v << cmd_cached_.vx, cmd_cached_.vy, cmd_cached_.vz,
-       cmd_cached_.wx, cmd_cached_.wy, cmd_cached_.wz;
-    
-  RCLCPP_INFO_THROTTLE(get_node()->get_logger(),            
-      *get_node()->get_clock(),           
-      1000,
-    "age=%.3fs timed_out=%d valid=%d vnorm=%.4f",
-    (now - last_cmd_time_).seconds(), timed_out, int(cmd_cached_.valid), v.norm());
+      cmd_cached_.wx, cmd_cached_.wy, cmd_cached_.wz;
 
-
-
-
+  // Scale translational vs rotational differently if you want
+  v.head<3>() *= v_lin_gain;   // x,y,z
+  v.tail<3>() *= v_ang_gain;   // wx,wy,wz
+  v(2) *= 0.02;  // z gets extra reduction
 
   // 5) Weighted damped resolved-rate: minimize ||J u - v||^2 + λ^2 ||W u||^2
   // We implement this by column-scaling J: J_scaled = J * W^{-1}
@@ -570,88 +568,14 @@ WholeBodyResolvedRateController::update_and_write_commands(
   Eigen::Vector3d v_base = u.head<3>();
   Eigen::VectorXd qdot   = u.tail(N);
 
-
-
-
-  // // 5) Damped resolved-rate: qdot = J^T (J J^T + λ^2 I)^-1 v
-  // const double lam2 = lambda_ * lambda_;
-
-  // // Jwhole * Jwhole^T  (6x6)
-  // Eigen::Matrix<double, 6, 6> JJt = Jwhole * Jwhole.transpose();
-  // Eigen::Matrix<double, 6, 6> A   = JJt + lam2 * Eigen::Matrix<double, 6, 6>::Identity();
-  // auto solver = A.ldlt();
-
-  // // Whole-body velocity u = [v_base; qdot]
-  // Eigen::VectorXd u = Jwhole.transpose() * solver.solve(v);
-
-  // // Split base and arm components
-  // Eigen::Vector3d v_base = u.head<3>();
-  // Eigen::VectorXd qdot   = u.tail(N);
-
-
-
   double task_mag = qdot.norm();
 
   task_mag = std::clamp(task_mag, 0.0, 1.0);
 
-  double null_scale_adapt = 20.0 * std::pow(1.0 - task_mag, 3.0);
+  // double null_scale_adapt = 20.0 * std::pow(1.0 - task_mag, 3.0);
 
-  RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-    "||qdot||=%.3f  qdot[0]=%.3f  dt=%.3f  step_limit=%.3f", qdot.norm(), qdot(0), dt, step_limit_);
-
-  // 6) Nullspace posture bias: qdot += N * (K * e)
-  // if (posture_active) {
-  //   Eigen::MatrixXd I   = Eigen::MatrixXd::Identity(N, N);
-  //   Eigen::MatrixXd Nproj = I - Je.transpose() * solver.solve(Je);  // null projector
-  //   Eigen::VectorXd e(N);
-  //   for (size_t i = 0; i < N; ++i) e(i) = q_home_[i] - q_kdl_(i);
-  //   qdot += null_kp_ * (Nproj * e);
-  // }
-
-  // 6) Nullspace posture bias: qdot += Nproj * u_posture
-  // if (posture_active) {
-
-  //   const int M = 3 + N;  // whole-body DOFs
-
-  //   Eigen::MatrixXd Iwb = Eigen::MatrixXd::Identity(M, M);
-  //   Eigen::MatrixXd Nproj = Iwb - Jwhole.transpose() * solver.solve(Jwhole);
-  
-
-  //   Eigen::VectorXd u_posture(M);
-  //   u_posture.setZero();
-
-  //   // joint-only part (skip base elements)
-  //   for (size_t i = 0; i < N; ++i) {
-  //     double e  = q_home_[i] - q_kdl_(i);
-  //     double ed = -dq_kdl_(i);
-  //     double ui = null_kp_[i] * e + null_kd_[i] * ed;
-
-  //     // (optional nonlinear scaling like your null_scale_adapt)
-  //     // ui *= null_scale_adapt;
-
-  //     ui = std::clamp(ui, -qdot_limit_, qdot_limit_);
-  //     u_posture(3 + i) = ui;  // first 3 = base, then joints
-  //   }
-
-  //   // Add projected nullspace motion
-  //   u += Nproj * u_posture;
-
-  //   // Re-split
-  //   v_base = u.head<3>();
-  //   qdot   = u.tail(N);
-
-  //   // Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n", "[", "]");
-
-  //   // RCLCPP_INFO_STREAM_THROTTLE(
-  //   //     get_node()->get_logger(),
-  //   //     *get_node()->get_clock(),
-  //   //     100,  // ms
-  //   //     "Nproj =\n" << Nproj.format(fmt));
-
-  //   // add projected nullspace motion
-  //   // qdot += Nproj * u_posture;
-  //   // qdot += u_posture;
-  // }
+  // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+  //   "||qdot||=%.3f  qdot[0]=%.3f  dt=%.3f  step_limit=%.3f", qdot.norm(), qdot(0), dt, step_limit_);
 
     // 6) Nullspace posture bias: u_final = u_task + N'_proj * u_posture' (in scaled coords)
   if (posture_active) {
@@ -682,7 +606,7 @@ WholeBodyResolvedRateController::update_and_write_commands(
     Eigen::VectorXd u_posture_prime = w.asDiagonal() * u_posture;
 
     // Add projected nullspace motion in scaled coords
-    u_prime = u_prime + Nproj_prime * u_posture_prime;
+    // u_prime = u_prime + Nproj_prime * u_posture_prime;
 
     // Back to original coordinates
     u = inv_w.asDiagonal() * u_prime;
@@ -722,28 +646,21 @@ WholeBodyResolvedRateController::update_and_write_commands(
     geometry_msgs::msg::TwistStamped base_cmd;
     base_cmd.header.stamp = now;
     base_cmd.header.frame_id = base_link_;  // e.g. "base_link"
-    base_cmd.twist.linear.x  = k_base * v_base[0];
-    base_cmd.twist.linear.y  = k_base * v_base[1];
+    base_cmd.twist.linear.x  = -k_base * v_base[0];
+    base_cmd.twist.linear.y  = -k_base * v_base[1];
     base_cmd.twist.linear.z  = 0.0;
     base_cmd.twist.angular.x = 0.0;
     base_cmd.twist.angular.y = 0.0;
     base_cmd.twist.angular.z = k_base * v_base[2];
     // base_cmd_pub_->publish(base_cmd);
 
-
-
-
     // RCLCPP_INFO_THROTTLE(
-    // get_node()->get_logger(), *get_node()->get_clock(), 1000,
-    // "WB: ||v||=%.3f  ||u||=%.3f  ||v_base||=%.3f  ||qdot||=%.3f  r_be=(%.3f, %.3f)",
-    // v.norm(), u.norm(), v_base.norm(), qdot.norm(), r_be.x(), r_be.y());
-    RCLCPP_INFO_THROTTLE(
-        get_node()->get_logger(), *get_node()->get_clock(), 1000,
-        "WB: v_base=(%.3f %.3f %.3f)  qdot=(%.3f %.3f %.3f %.3f %.3f %.3f)  r_be=(%.3f %.3f)",
-        v_base.x(), v_base.y(), v_base.z(),
-        qdot[0], qdot[1], qdot[2], qdot[3], qdot[4], qdot[5],
-        r_be.x(), r_be.y()
-    );
+    //     get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    //     "WB: v_base=(%.3f %.3f %.3f)  qdot=(%.3f %.3f %.3f %.3f %.3f %.3f)  r_be=(%.3f %.3f)",
+    //     v_base.x(), v_base.y(), v_base.z(),
+    //     qdot[0], qdot[1], qdot[2], qdot[3], qdot[4], qdot[5],
+    //     r_be.x(), r_be.y()
+    // );
 
     // v_ee contribution from arm joints
     Eigen::Matrix<double, 6, 1> v_ee_arm = Je * qdot;
@@ -756,15 +673,11 @@ WholeBodyResolvedRateController::update_and_write_commands(
 
     RCLCPP_INFO_THROTTLE(
         get_node()->get_logger(), *get_node()->get_clock(), 1000,
-        "EE: v_arm=(%.3f %.3f %.3f | %.3f %.3f %.3f)  v_base=(%.3f %.3f %.3f | %.3f %.3f %.3f)  v_cmd=(%.3f %.3f %.3f | %.3f %.3f %.3f)",
-        v_ee_arm(0), v_ee_arm(1), v_ee_arm(2), v_ee_arm(3), v_ee_arm(4), v_ee_arm(5),
-        v_ee_base(0), v_ee_base(1), v_ee_base(2), v_ee_base(3), v_ee_base(4), v_ee_base(5),
-        v(0), v(1), v(2), v(3), v(4), v(5)
+        "EE: v_arm=(%.3f %.3f %.3f | %.3f %.3f %.3f) ",
+        v_ee_arm(0), v_ee_arm(1), v_ee_arm(2), v_ee_arm(3), v_ee_arm(4), v_ee_arm(5)
     );
 
-
-
-    // write_refs_to_slots();  // fills pos_ref_slots_[i].value / vel_ref_slots_[i].value
+    write_refs_to_slots();  
     return controller_interface::return_type::OK;
   }
 
