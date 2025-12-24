@@ -17,10 +17,11 @@ controller_interface::CallbackReturn WholeBodyResolvedRateController::on_init() 
     auto_declare<std::string>("tip_link", "");
     auto_declare<std::string>("robot_description", "");
     auto_declare<double>("lambda", 0.02);
-    auto_declare<double>("qdot_limit", 2.0);
+    auto_declare<double>("qdot_limit", 1.0);
     // auto_declare<double>("null_kp", 0.0);
     auto_declare<std::vector<double>>("null_kp", {});
     auto_declare<std::vector<double>>("null_kd", {});
+
     
     auto_declare<std::vector<double>>("q_home", {});
     auto_declare<double>("integrator_limit", 1.0);
@@ -35,7 +36,9 @@ controller_interface::CallbackReturn WholeBodyResolvedRateController::on_init() 
     auto_declare<double>("base_vx_limit", base_vx_limit_);
     auto_declare<double>("base_vy_limit", base_vy_limit_);
     auto_declare<double>("base_wz_limit", base_wz_limit_);
-
+    auto_declare<double>("base_weight", base_weight_);
+    auto_declare<double>("arm_weight", arm_weight_);
+    auto_declare<double>("base_cmd_scale", base_cmd_scale_);
 
   } catch (...) { return CallbackReturn::ERROR; }
   return CallbackReturn::SUCCESS;
@@ -332,25 +335,6 @@ void WholeBodyResolvedRateController::write_refs_to_slots() {
       command_interfaces_[vel_cmd_index_[i]].set_value(qdot_ref_[i]);
     }
   }
-
-  // if (command_interfaces_.size() == N) {
-  //   // assumed: vel-only claim
-  //   for (size_t i = 0; i < N; ++i)
-  //     command_interfaces_[i].set_value(qdot_ref_[i]);
-  // } else if (command_interfaces_.size() == 2*N) {
-  //   for (size_t i = 0; i < N; ++i) {
-  //     command_interfaces_[i].set_value(q_ref_[i]);
-  //     command_interfaces_[N+i].set_value(qdot_ref_[i]);
-  //   }
-  // }
-
-  // Keep exporting our own reference_interfaces_ if you need them for chaining
-  // if (reference_interfaces_.size() >= 2 * N) {
-  //   for (size_t i = 0; i < N; ++i) {
-  //     reference_interfaces_[i]     = q_ref_[i];
-  //     reference_interfaces_[N + i] = qdot_ref_[i];
-  //   }
-  // }
 }
 
 
@@ -391,8 +375,10 @@ WholeBodyResolvedRateController::update_and_write_commands(
     q_kdl_(i)  = pos_states_[i].get().get_value();
     dq_kdl_(i) = vel_states_[i].get().get_value();
   }
+  
   bool posture_active = std::any_of(null_kp_.begin(), null_kp_.end(),
                                     [](double k){ return k > 0.0; });
+
   // 2) NO TASK COMMAND → posture bias or hold
   if (!cmd_cached_.valid) {
     
@@ -439,17 +425,17 @@ WholeBodyResolvedRateController::update_and_write_commands(
         // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
         //   "dq_raw=%.4f  dq_clamped=%.4f", dq_raw, dq_clamped);
       }
+
       // RCLCPP_INFO_THROTTLE(
       //   get_node()->get_logger(),                // logger
       //   *get_node()->get_clock(),                // clock
       //   1000,                                   // ms between prints
       //   "Nullspace active: ||err||=%.4f  ||qdot_ref||=%.4f  null_kp=%.3f",
       // //   err_norm, qdot_norm, null_kp_);
-      RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-        "NS: dt=%.4f dt_used=%.4f ||qdot_ref||=%.4f step_limit=%.4f sat_step=%zu/%zu",
-        dt, dt_used, Eigen::Map<Eigen::VectorXd>(qdot_ref_.data(), N).norm(),
-        step_limit_, sat_step, N);
-
+      // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+      //   "NS: dt=%.4f dt_used=%.4f ||qdot_ref||=%.4f step_limit=%.4f sat_step=%zu/%zu",
+      //   dt, dt_used, Eigen::Map<Eigen::VectorXd>(qdot_ref_.data(), N).norm(),
+      //   step_limit_, sat_step, N);
 
     } else {
       for (size_t i = 0; i < N; ++i) {
@@ -568,18 +554,24 @@ WholeBodyResolvedRateController::update_and_write_commands(
   Eigen::Vector3d v_base = u.head<3>();
   Eigen::VectorXd qdot   = u.tail(N);
 
-  double task_mag = qdot.norm();
+  double margin = 5.0 * M_PI / 180.0;  // 5 deg safety margin
 
-  task_mag = std::clamp(task_mag, 0.0, 1.0);
+  for (size_t i = 0; i < N; ++i) {
+    if (q_kdl_(i) <= q_min_[i] + margin && qdot(i) < 0.0) {
+      qdot(i) = 0.0;
+    }
+    if (q_kdl_(i) >= q_max_[i] - margin && qdot(i) > 0.0) {
+      qdot(i) = 0.0;
+    }
+  }
 
-  // double null_scale_adapt = 20.0 * std::pow(1.0 - task_mag, 3.0);
 
-  // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-  //   "||qdot||=%.3f  qdot[0]=%.3f  dt=%.3f  step_limit=%.3f", qdot.norm(), qdot(0), dt, step_limit_);
+  // double task_mag = qdot.norm();
 
-    // 6) Nullspace posture bias: u_final = u_task + N'_proj * u_posture' (in scaled coords)
+  // task_mag = std::clamp(task_mag, 0.0, 1.0);
+
+  // 6) Nullspace posture bias: u_final = u_task + N'_proj * u_posture' (in scaled coords)
   if (posture_active) {
-
     Eigen::MatrixXd Iwb = Eigen::MatrixXd::Identity(M, M);
 
     // Nullspace projector in scaled coordinates:
@@ -606,7 +598,7 @@ WholeBodyResolvedRateController::update_and_write_commands(
     Eigen::VectorXd u_posture_prime = w.asDiagonal() * u_posture;
 
     // Add projected nullspace motion in scaled coords
-    // u_prime = u_prime + Nproj_prime * u_posture_prime;
+    u_prime = u_prime + Nproj_prime * u_posture_prime;
 
     // Back to original coordinates
     u = inv_w.asDiagonal() * u_prime;
@@ -616,14 +608,43 @@ WholeBodyResolvedRateController::update_and_write_commands(
     qdot   = u.tail(N);
   }
 
+  size_t sat_step = 0;
 
-  // 7) Clamp & integrate → write to exported reference slots
   for (size_t i = 0; i < N; ++i) {
-    qdot_ref_[i] = std::clamp(qdot(i), -qdot_limit_, qdot_limit_);
-    const double dt_used = std::min(dt, dt_ceiling_); // e.g., 0.02s
-    const double dq = std::clamp(qdot_ref_[i] * dt_used, -step_limit_, step_limit_);  // add a new param step_limit_
-    q_ref_[i] += dq;
+    const double dt_used = std::min(dt, dt_ceiling_);
+
+    double qdot_cmd = std::clamp(qdot(i), -qdot_limit_, qdot_limit_);
+
+    // 2) angle limit as a velocity bound: q_min <= q + dt*qdot <= q_max
+    const double q      = q_kdl_(i);  // use measured joint angle, not q_ref_
+    const double qd_min = (q_min_[i] - q) / dt_used;
+    const double qd_max = (q_max_[i] - q) / dt_used;
+
+    // combine with your velocity limit
+    const double lo = std::max(-qdot_limit_, qd_min);
+    const double hi = std::min( qdot_limit_, qd_max);
+
+    // if lo>hi, you're already out of bounds or dt_used weird; force safest behavior
+    if (lo <= hi) qdot_cmd = std::clamp(qdot_cmd, lo, hi);
+    else          qdot_cmd = 0.0;
+
+    qdot_ref_[i] = qdot_cmd;
+
+    // 3) integrate with your step clamp
+    const double dq_raw     = qdot_ref_[i] * dt_used;
+    const double dq_clamped = std::clamp(dq_raw, -step_limit_, step_limit_);
+    sat_step += (dq_clamped != dq_raw);
+    q_ref_[i] += dq_clamped;
+
+    // 4) (optional) final safety: keep q_ref_ inside limits too
+    q_ref_[i] = std::clamp(q_ref_[i], q_min_[i], q_max_[i]);
   }
+
+
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(), *get_node()->get_clock(), 1000,
+  //   "WB: sat_step = %zu / %zu", sat_step, N);
+
   
   // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
   //   "State q[0]=%.3f dq[0]=%.3f", q_kdl_(0), dq_kdl_(0));
@@ -642,25 +663,26 @@ WholeBodyResolvedRateController::update_and_write_commands(
     v_base[1] = std::clamp(v_base[1], -base_vy_limit_, base_vy_limit_);
     v_base[2] = std::clamp(v_base[2], -base_wz_limit_, base_wz_limit_);
 
+
     // Publish base twist command
     geometry_msgs::msg::TwistStamped base_cmd;
     base_cmd.header.stamp = now;
     base_cmd.header.frame_id = base_link_;  // e.g. "base_link"
     base_cmd.twist.linear.x  = -k_base * v_base[0];
-    base_cmd.twist.linear.y  = -k_base * v_base[1];
+    base_cmd.twist.linear.y  = k_base * v_base[1];
     base_cmd.twist.linear.z  = 0.0;
     base_cmd.twist.angular.x = 0.0;
     base_cmd.twist.angular.y = 0.0;
     base_cmd.twist.angular.z = k_base * v_base[2];
     // base_cmd_pub_->publish(base_cmd);
 
-    // RCLCPP_INFO_THROTTLE(
-    //     get_node()->get_logger(), *get_node()->get_clock(), 1000,
-    //     "WB: v_base=(%.3f %.3f %.3f)  qdot=(%.3f %.3f %.3f %.3f %.3f %.3f)  r_be=(%.3f %.3f)",
-    //     v_base.x(), v_base.y(), v_base.z(),
-    //     qdot[0], qdot[1], qdot[2], qdot[3], qdot[4], qdot[5],
-    //     r_be.x(), r_be.y()
-    // );
+    RCLCPP_INFO_THROTTLE(
+        get_node()->get_logger(), *get_node()->get_clock(), 1000,
+        "WB: v_base=(%.3f %.3f %.3f)  qdot=(%.3f %.3f %.3f %.3f %.3f %.3f)  r_be=(%.3f %.3f)",
+        v_base.x(), v_base.y(), v_base.z(),
+        qdot[0], qdot[1], qdot[2], qdot[3], qdot[4], qdot[5],
+        r_be.x(), r_be.y()
+    );
 
     // v_ee contribution from arm joints
     Eigen::Matrix<double, 6, 1> v_ee_arm = Je * qdot;
@@ -671,13 +693,29 @@ WholeBodyResolvedRateController::update_and_write_commands(
     // total
     Eigen::Matrix<double, 6, 1> v_ee_tot = v_ee_arm + v_ee_base;
 
-    RCLCPP_INFO_THROTTLE(
-        get_node()->get_logger(), *get_node()->get_clock(), 1000,
-        "EE: v_arm=(%.3f %.3f %.3f | %.3f %.3f %.3f) ",
-        v_ee_arm(0), v_ee_arm(1), v_ee_arm(2), v_ee_arm(3), v_ee_arm(4), v_ee_arm(5)
-    );
+    // RCLCPP_INFO_THROTTLE(
+    //     get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    //     "EE: v_arm=(%.3f %.3f %.3f | %.3f %.3f %.3f) ",
+    //     v_ee_arm(0), v_ee_arm(1), v_ee_arm(2), v_ee_arm(3), v_ee_arm(4), v_ee_arm(5)
+    // );
 
-    write_refs_to_slots();  
+    // write_refs_to_slots();  
+    static double dt_min = 1e9;
+    static double dt_max = 0.0;
+    static double dt_sum = 0.0;
+    static size_t dt_count = 0;
+
+    // double dt = period.seconds();
+    dt_min = std::min(dt_min, dt);
+    dt_max = std::max(dt_max, dt);
+    dt_sum += dt;
+    dt_count++;
+
+    // RCLCPP_INFO_THROTTLE(
+    //     get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    //     "WB: dt=%.6f s  dt_min=%.6f  dt_max=%.6f  dt_avg=%.6f (N=%zu)",
+    //     dt, dt_min, dt_max, dt_sum / dt_count, dt_count);
+
     return controller_interface::return_type::OK;
   }
 

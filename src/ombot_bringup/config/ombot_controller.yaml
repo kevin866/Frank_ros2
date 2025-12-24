@@ -107,7 +107,7 @@ wb_resolved_rate_controller:
     tip_link:  end_link
     inner_controller: "joint_impedance_controller"
     lambda: 0.03
-    qdot_limit: 2.0
+    qdot_limit: 1.0
     step_limit: 0.2
     dt_ceiling: 0.1
     v_min: 0.018
@@ -116,6 +116,9 @@ wb_resolved_rate_controller:
     tau_rebase: 0.5
     cmd_timeout: 0.25
     v_deadband: 0.0001
+    base_weight: 1.0
+    arm_weight: 1.0
+    base_cmd_scale: 1.0
 
 
 mecanum_controller:

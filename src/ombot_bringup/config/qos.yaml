@@ -33,3 +33,15 @@
   durability: volatile
   history: keep_last
   depth: 10
+
+/ee_desired_pose:
+  reliability: reliable
+  durability: volatile
+  history: keep_last
+  depth: 10
+
+/ee_desired_twist:
+  reliability: reliable
+  durability: volatile
+  history: keep_last
+  depth: 10

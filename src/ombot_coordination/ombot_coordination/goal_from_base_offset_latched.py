@@ -6,14 +6,49 @@ from std_srvs.srv import Trigger
 from rcl_interfaces.msg import SetParametersResult
 import numpy as np
 
+class ThrottledLogger:
+    def __init__(self, node):
+        self._node = node
+        self._last_ns = {}  # key -> last log time in ns
+
+    def _allow(self, key: str, period_s: float) -> bool:
+        now_ns = self._node.get_clock().now().nanoseconds
+        last = self._last_ns.get(key, 0)
+        if now_ns - last >= int(period_s * 1e9):
+            self._last_ns[key] = now_ns
+            return True
+        return False
+
+    def info(self, period_s: float, msg: str, key: str = None):
+        k = key or "info"
+        if self._allow(k, period_s):
+            self._node.get_logger().info(msg)
+
+    def warn(self, period_s: float, msg: str, key: str = None):
+        k = key or "warn"
+        if self._allow(k, period_s):
+            self._node.get_logger().warn(msg)
+
+    def error(self, period_s: float, msg: str, key: str = None):
+        k = key or "error"
+        if self._allow(k, period_s):
+            self._node.get_logger().error(msg)
+
 
 class GoalFromOffset(Node):
     def __init__(self):
         super().__init__('goal_from_offset')
+        
+        self.log = ThrottledLogger(self)
+
 
         # Parameters
         self.xyz_offset = np.array(
             self.declare_parameter('offset_xyz', [0.0, 0.0, 0.0]).value,
+            dtype=float,
+        )
+        self.home_position = np.array(
+            self.declare_parameter('home_position', [0.20, 0.00, 0.45]).value,
             dtype=float,
         )
         self.rate_hz = self.declare_parameter('publish_rate_hz', 20.0).value
@@ -88,6 +123,11 @@ class GoalFromOffset(Node):
                     ])
                     off_w = self.R_bw @ self.xyz_offset
                     p_goal_w = self.R_bw @ p_b_w + off_w
+                    self.get_logger().info(
+                        f"off_w: {off_w}\n"
+                        f"p_goal_w: {p_goal_w}"
+                    )
+
 
                     self.latched_goal.pose.position.x = float(p_goal_w[0])
                     self.latched_goal.pose.position.y = float(p_goal_w[1])
@@ -143,7 +183,7 @@ class GoalFromOffset(Node):
                    ee.pose.position.y,
                    ee.pose.position.z])
 
-        p_goal = self.R_bw @ p_b_w + off_b + p_ee
+        p_goal = self.R_bw @ p_b_w + off_b + self.home_position
 
         goal = PoseStamped()
         goal.header.frame_id = 'base'

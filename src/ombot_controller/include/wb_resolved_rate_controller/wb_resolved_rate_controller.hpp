@@ -62,26 +62,31 @@ private:
   // double v_min_  = 0.03;   // rad/s
   // double tau_rebase_{0.5};
 
+
   // === Resolved-rate controller tuning (100 Hz) ===
   double lambda_{0.3};        // DLS damping; 0.01–0.05 is typical
   double qdot_limit_{1.0};     // rad/s per joint speed limit (bump to 1.0 if safe)
   double integ_limit_{0.20};   // rad clamp for integrated posture/error (anti-windup)
-  double dt_ceiling_{0.03};    // s; cap dt used for integration (100 Hz -> 0.01, allow spikes to 0.03)
+  double dt_ceiling_{0.05};    // s; cap dt used for integration (100 Hz -> 0.01, allow spikes to 0.03)
 
-  double base_vx_limit_{0.3}; // m/s
-  double base_vy_limit_{0.3}; // m/s
+  double base_vx_limit_{3.0}; // m/s
+  double base_vy_limit_{3.0}; // m/s
   double base_wz_limit_{0.8}; // rad/s
 
 
   // Max per-timestep joint change (derived for consistency)
   double step_limit_{ qdot_limit_ * dt_ceiling_ };  // = 0.7 * 0.03 = 0.021 rad/step @ worst allowed dt
+  // double step_limit_{ 1.0 };  // = 0.7 * 0.03 = 0.021 rad/step @ worst allowed dt
 
   double null_scale_{0.8};     // dimensionless weight for posture bias (static)
   double err_db_{0.01};        // rad deadband to ignore tiny errors/noise
   double v_min_{0.01};         // rad/s floor to overcome stiction (apply only when |cmd| < v_min_)
   double tau_rebase_{0.5};     // s; smoothing/slew time constant for reference rebasing
 
-  
+  // static double dt_min = 1e9;
+  // static double dt_max = 0.0;
+  // static double dt_sum = 0.0;
+  // static size_t dt_count = 0;
 
   // double null_kp_{0.2};        // posture bias (0 disables)
   std::vector<double> q_home_; // desired home posture for nullspace
@@ -98,7 +103,7 @@ private:
   // In wb_resolved_rate_controller.hpp
   double base_weight_{1.0};  // cost weight for base DOFs
   double arm_weight_{1.0};   // cost weight for arm joints
-  double base_cmd_scale_ = 3.0;  // or 3.0, tune this
+  double base_cmd_scale_ = 1.0;  // or 3.0, tune this
   double v_lin_scale_ = 10.0;    // scale linear velocities
   // double v_ang_scale_ = 0.000001;    // scale angular velocities
 
@@ -148,8 +153,45 @@ private:
   void twist_cb(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
   void write_refs_to_slots();
 
+
   rclcpp::Time last_cmd_time_;
   double cmd_timeout_{0.25};   // seconds; tune 0.1–0.5
+  // std::vector<double> q_min_ = {
+  //   -M_PI,        // Joint 1 : -π ~ π
+  //   -0.5 * M_PI,  // Joint 2 : -π/2 ~ π/2
+  //   -0.5 * M_PI,  // Joint 3 : -π/2 ~ 3π/4
+  //   -M_PI,        // Joint 4 : -π ~ π
+  //   -0.5 * M_PI,  // Joint 5 : -π/2 ~ π/2
+  //   -M_PI         // Joint 6 : -π ~ π
+  // };
+
+  // std::vector<double> q_max_ = {
+  //   M_PI,        // Joint 1
+  //   0.5 * M_PI,  // Joint 2
+  //   0.75 * M_PI, // Joint 3
+  //   M_PI,        // Joint 4
+  //   0.5 * M_PI,  // Joint 5
+  //   M_PI         // Joint 6
+  // };
+
+  std::vector<double> q_min_ = {
+    -0.8 * M_PI,        // Joint 1 : -π ~ π
+    -0.4 * M_PI,        // Joint 2 : -π/2 ~ π/2
+    -0.4 * M_PI,        // Joint 3 : -π/2 ~ 3π/4
+    -0.8 * M_PI,        // Joint 4 : -π ~ π
+    -0.4 * M_PI,        // Joint 5 : -π/2 ~ π/2
+    -0.8 * M_PI         // Joint 6 : -π ~ π
+  };
+
+  std::vector<double> q_max_ = {
+    0.8 * M_PI,         // Joint 1
+    0.4 * M_PI,         // Joint 2
+    0.6 * M_PI,         // Joint 3  (0.75 * 0.8 = 0.6)
+    0.8 * M_PI,         // Joint 4
+    0.4 * M_PI,         // Joint 5
+    0.8 * M_PI          // Joint 6
+  };
+
 };
 
 } // namespace ombot_controller

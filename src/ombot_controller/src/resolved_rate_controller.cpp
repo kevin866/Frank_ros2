@@ -492,7 +492,6 @@ ResolvedRateController::update_and_write_commands(
       // ui *= null_scale_;  // e.g., null_scale_ = 0.5
       ui *= null_scale_adapt;
 
-
       // clamp per-joint null velocity contribution
       ui = std::clamp(ui, -qdot_limit_, qdot_limit_);
       u_posture(i) = ui;

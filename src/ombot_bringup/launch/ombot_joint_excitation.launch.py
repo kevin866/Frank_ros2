@@ -1,5 +1,8 @@
 from launch import LaunchDescription
-from launch.actions import RegisterEventHandler
+from launch.actions import RegisterEventHandler, ExecuteProcess
+from launch.actions import ExecuteProcess, TimerAction, LogInfo, EmitEvent
+from launch.events import Shutdown
+
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
 
@@ -9,7 +12,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
-    # --- URDF via xacro -> robot_description (XML string, not a path) ---
+    # --- URDF via xacro -> robot_description ---
     robot_description_content = ParameterValue(
         Command([
             PathJoinSubstitution([FindExecutable(name="xacro")]),
@@ -32,7 +35,7 @@ def generate_launch_description():
         [
             FindPackageShare("ombot_bringup"),
             "config",
-            "ombot_controller.yaml",   # must define joint_excitation_controller
+            "ombot_controller.yaml",
         ]
     )
 
@@ -51,7 +54,6 @@ def generate_launch_description():
         parameters=[robot_description],
     )
 
-    # Spawners
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -66,7 +68,6 @@ def generate_launch_description():
         output="screen",
     )
 
-    # Ensure we spawn the excitation controller *after* JSB is up
     delay_excitation_after_jsb = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=joint_state_broadcaster_spawner,
@@ -74,11 +75,32 @@ def generate_launch_description():
         )
     )
 
+    # --- Rosbag recorder via CLI ---
+    rosbag_record = ExecuteProcess(
+        cmd=[
+            "ros2", "bag", "record",
+            "-o", "joint_excitation_run",
+            "--storage", "sqlite3",
+            "/joint_excitation_controller/tau_cmd",
+            "/joint_states",
+        ],
+        output="screen",
+    )
+    stop_recording = TimerAction(
+        period=50.0,   # <-- run for 50 seconds
+        actions=[
+            LogInfo(msg="Stopping rosbag recording..."),
+            EmitEvent(event=Shutdown(reason="Recording complete"))
+        ]
+    )
+
     nodes = [
         control_node,
         robot_state_pub_node,
         joint_state_broadcaster_spawner,
         delay_excitation_after_jsb,
+        rosbag_record,
+        stop_recording,
     ]
 
     return LaunchDescription(nodes)

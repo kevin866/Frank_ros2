@@ -1,0 +1,29 @@
+split_commander:
+  ros__parameters:
+
+    # --- Topics ---
+    base_pose_topic: "/vrpn_mocap/RigidBody_1/pose"
+    ee_pose_topic: "/ee_pose"
+    goal_pose_topic: "/goal_pose"
+    ee_twist_topic: "/wb_resolved_rate_controller/ee_twist"
+    base_cmd_topic: "/cmd_vel"
+
+    # --- Option B gains ---
+    k1: 1.0
+    k2: 0.2
+    k3: 0.8
+
+    # --- Stow point (base frame) ---
+    stow_point_b: [0.30, 0.00, 0.25]
+
+    # --- Arm PD ---
+    kp_pos: 1.0
+    kp_rot: 0.0
+    kd_pos: 0.0
+    kd_rot: 0.0
+
+    # --- Limits ---
+    max_lin: 0.5
+    max_ang: 1.0
+    max_base_lin: 0.4
+    max_base_ang: 1.0

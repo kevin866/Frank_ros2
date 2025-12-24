@@ -40,7 +40,8 @@ def quat_to_rotmat(qx: float, qy: float, qz: float, qw: float):
         [2.0*(xy + wz),       1.0 - 2.0*(xx + zz), 2.0*(yz - wx)],
         [2.0*(xz - wy),       2.0*(yz + wx),       1.0 - 2.0*(xx + yy)],
     ]
-
+def vel_deadband(v, db=0.001):
+    return 0.0 if abs(v) < db else v
 
 # drop this helper somewhere in your node file
 class ThrottledLogger:
@@ -79,6 +80,10 @@ def rotmat_mul(Ra, Rb):
             out[i][j] = Ra[i][0]*Rb[0][j] + Ra[i][1]*Rb[1][j] + Ra[i][2]*Rb[2][j]
     return out
 
+def smooth_deadband(x, db):
+    if abs(x) < db:
+        return 0.0
+    return math.copysign(abs(x) - db, x)
 
 def rotmat_transpose(R):
     return [
@@ -144,11 +149,11 @@ class WholeBodyTaskCommander(Node):
         # Simple PD gains in base frame
         self.declare_parameter("kp_pos", 1.0)
         self.declare_parameter("kp_rot", 1.0)
-        self.declare_parameter("kd_pos", 0.0)
+        self.declare_parameter("kd_pos", 0.2)
         self.declare_parameter("kd_rot", 0.0)
 
         # Velocity limits
-        self.declare_parameter("max_lin", 0.5)    # m/s
+        self.declare_parameter("max_lin", 3.5)    # m/s
         self.declare_parameter("max_ang", 1.0)    # rad/s
 
         base_pose_topic = self.get_parameter("base_pose_topic").get_parameter_value().string_value
@@ -167,6 +172,16 @@ class WholeBodyTaskCommander(Node):
         self.ee:   Optional[Pose3D] = None
         self.goal: Optional[Pose3D] = None
 
+        self.deadband = 0.001
+
+        self.declare_parameter("use_traj", True)
+        self.use_traj = bool(self.get_parameter("use_traj").value)
+
+        self.des_pose = None
+        self.des_twist = None
+
+
+
         # Best-effort for mocap / ee pose
         sensor_qos = qos_profile_sensor_data  # depth=10, BEST_EFFORT, VOLATILE
 
@@ -177,6 +192,13 @@ class WholeBodyTaskCommander(Node):
         )
 
         # Subscriptions
+
+        self.sub_des_pose = self.create_subscription(
+            PoseStamped, "/ee_desired_pose", self.des_pose_cb, 10)
+
+        self.sub_des_twist = self.create_subscription(
+            TwistStamped, "/ee_desired_twist", self.des_twist_cb, 10)
+
         self.sub_base = self.create_subscription(
             PoseStamped, base_pose_topic, self.base_cb, sensor_qos)
 
@@ -198,7 +220,15 @@ class WholeBodyTaskCommander(Node):
         #     f"goal={goal_pose_topic}, twist_out={ee_twist_topic}"
         # )
 
+        self.last_e_pos = [0.0, 0.0, 0.0]
+        self.last_e_rot = [0.0, 0.0, 0.0]
+        self.have_last_error = False
+
+
     # --- Callbacks for poses ---
+    def des_pose_cb(self, msg): self.des_pose = msg
+
+    def des_twist_cb(self, msg): self.des_twist = msg
 
     def base_cb(self, msg: PoseStamped):
         self.base = Pose3D(
@@ -224,12 +254,18 @@ class WholeBodyTaskCommander(Node):
     # --- Main control loop ---
 
     def spin(self):
+        # --- 1) Measure loop time once ---
         now = self.get_clock().now()
-        dt = (now - self.last_time).nanoseconds * 1e-9
-        if dt <= 0.0:
-            dt = 1e-3
-        dt = min(dt, 0.05)
+        dt_raw = (now - self.last_time).nanoseconds * 1e-9
+        if dt_raw <= 0.0:
+            dt_raw = 1e-3
+        dt_used = min(dt_raw, 0.05)   # only clamp huge spikes if you want
         self.last_time = now
+
+        # Optional: log the commander loop rate
+        # self.get_logger().info(
+        #     f"Commander loop: dt_raw={dt_raw:.6f} s, dt_used={dt_used:.6f} s"
+        # )
 
         if self.base is None or self.ee is None or self.goal is None:
             return
@@ -240,7 +276,22 @@ class WholeBodyTaskCommander(Node):
 
         qe_b = self.ee.q     # base -> ee orientation (quaternion)
 
-        pg_b = self.goal.p   # base -> goal position
+
+        if self.use_traj and self.des_pose is not None:
+            pg_b = [self.des_pose.pose.position.x,
+                    self.des_pose.pose.position.y,
+                    self.des_pose.pose.position.z]
+            vff = [self.des_twist.twist.linear.x,
+                self.des_twist.twist.linear.y,
+                self.des_twist.twist.linear.z] if self.des_twist else [0.0,0.0,0.0]
+            self.log.info(1.0, f"pg_b = {pg_b}", key="pg_b")
+
+        else:
+            # fallback to direct goal
+            pg_b = self.goal.p
+            vff = [0.0, 0.0, 0.0]
+
+        # pg_b = self.goal.p   # base -> goal position
         qg_b = self.goal.q   # base -> goal orientation (quaternion)
 
         pb_w = np.array(self.base.p)   # base in world (you may not even need this)
@@ -269,37 +320,56 @@ class WholeBodyTaskCommander(Node):
         # self.log.info(1.0, f"e_rot_b = {e_rot_b}", key="e_rot_b")
 
         # 4) Position error in base frame: e_pos_b = p_g^b - p_e^b
+        # e_pos_b = [
+        #     pg_b[0] - pe_b[0] - pb_b[0],
+        #     pg_b[1] - pe_b[1] - pb_b[1],
+        #     pg_b[2] - pe_b[2] - pb_b[2],
+        # ]
         e_pos_b = [
-            pg_b[0] - pe_b[0] - pb_b[0],
-            pg_b[1] - pe_b[1] - pb_b[1],
-            pg_b[2] - pe_b[2] - pb_b[2],
+            pg_b[0] - pe_b[0],
+            pg_b[1] - pe_b[1],
+            pg_b[2] - pe_b[2],
         ]
         # e_pos_b = np.array([e_pos_b[0], 0.0, 0.0])  # only X
 
-
         self.log.info(1.0, f"e_pos_b = {e_pos_b}", key="e_pos_b")
 
-        # 4) Orientation error in base frame:
-        #   R_be = R_bw * R_we
-        #   R_bg = R_bw * R_wg
-        #   R_err = R_be^T * R_bg
-        # R_be = rotmat_mul(R_bw, R_we)
-        # R_bg = rotmat_mul(R_bw, R_wg)
-        # R_be_T = rotmat_transpose(R_be)
-        # R_err = rotmat_mul(R_be_T, R_bg)   # rotation from ee frame to goal, expressed in base
+        # e_pos_b and e_rot_b already computed
 
-        # e_rot_b = rotmat_to_rotvec(R_err)  # (rx, ry, rz) in base frame
-        # self.log.info(1.0, f"e_rot_b = {e_rot_b}", key="e_rot_b")
+        if self.have_last_error:
+            de_pos = [
+                (e_pos_b[0] - self.last_e_pos[0]) / dt_used,
+                (e_pos_b[1] - self.last_e_pos[1]) / dt_used,
+                (e_pos_b[2] - self.last_e_pos[2]) / dt_used,
+            ]
+            de_rot = [
+                (e_rot_b[0] - self.last_e_rot[0]) / dt_used,
+                (e_rot_b[1] - self.last_e_rot[1]) / dt_used,
+                (e_rot_b[2] - self.last_e_rot[2]) / dt_used,
+            ]
+        else:
+            de_pos = [0.0, 0.0, 0.0]
+            de_rot = [0.0, 0.0, 0.0]
+            self.have_last_error = True
 
-        # 5) Simple PD in base frame
-        # (here we ignore derivative of error for now; you can add it using stored last e_pos_b / e_rot_b)
-        vx = self.kp_pos * e_pos_b[0]
-        vy = self.kp_pos * e_pos_b[1]
-        vz = self.kp_pos * e_pos_b[2]
+        self.last_e_pos = e_pos_b.copy()
+        self.last_e_rot = list(e_rot_b)
 
-        wx = self.kp_rot * e_rot_b[0]
-        wy = self.kp_rot * e_rot_b[1]
-        wz = self.kp_rot * e_rot_b[2]
+        # e_pos_b = [smooth_deadband(e_pos_b[0], self.deadband),
+        #         smooth_deadband(e_pos_b[1], self.deadband),
+        #         smooth_deadband(e_pos_b[2], self.deadband)]
+
+        vx = vff[0] + self.kp_pos * e_pos_b[0]
+        vy = vff[1] + self.kp_pos * e_pos_b[1]
+        vz = vff[2] + self.kp_pos * e_pos_b[2]
+        # vx = self.kp_pos * e_pos_b[0] + self.kd_pos * de_pos[0]
+        # vy = self.kp_pos * e_pos_b[1] + self.kd_pos * de_pos[1]
+        # vz = self.kp_pos * e_pos_b[2] + self.kd_pos * de_pos[2]
+
+        wx = self.kp_rot * e_rot_b[0] + self.kd_rot * de_rot[0]
+        wy = self.kp_rot * e_rot_b[1] + self.kd_rot * de_rot[1]
+        wz = self.kp_rot * e_rot_b[2] + self.kd_rot * de_rot[2]
+
 
         # 6) Clamp
         v_xy_mag = math.hypot(vx, vy)
@@ -312,6 +382,10 @@ class WholeBodyTaskCommander(Node):
         wx = clamp(wx, -self.max_ang, self.max_ang)
         wy = clamp(wy, -self.max_ang, self.max_ang)
         wz = clamp(wz, -self.max_ang, self.max_ang)
+
+        # vx = vel_deadband(vx)
+        # vy = vel_deadband(vy)
+        # vz = vel_deadband(vz)
 
         # 7) Publish command in base_link frame for whole-body controller
         msg = TwistStamped()

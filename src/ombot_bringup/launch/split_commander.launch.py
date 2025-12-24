@@ -75,8 +75,7 @@ def generate_launch_description():
 
     wb_rr = Node(
         package='controller_manager', executable='spawner',
-        arguments=['wb_resolved_rate_controller', '--activate', '-c', '/controller_manager'],
-        parameters=[ctrl_yaml],
+        arguments=['resolved_rate_controller', '--activate', '-c', '/controller_manager'],
         output='screen'
     )
 
@@ -94,7 +93,9 @@ def generate_launch_description():
         parameters=[{
             'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
             'goal_pose_topic': '/goal_pose',
-            'offset_xyz': [1.0, 0.0, 0.0],   # set your desired offset here (world frame)
+            'offset_xyz': [
+                1.0, 0.0, 0.0],   # set your desired offset here (world frame)
+            'home_position': [0.20, 0.00, 0.45],
             'latch': True,                   # True = latch once, False = follow base
         }]
     )
@@ -108,44 +109,62 @@ def generate_launch_description():
         OnProcessExit(target_action=imp, on_exit=[wb_rr])
     )
 
-    # --- Whole-body task commander (Python) ---
-    # This node just publishes desired EE twist in base_link frame
-    wb_task_commander = Node(
+    # --- Split commander (Python) ---
+    # Publishes:
+    #   - desired EE twist -> wb_resolved_rate_controller/ee_twist
+    #   - base cmd_vel     -> mecanum controller (via /cmd_vel or your topic)
+    split_commander = Node(
         package='ombot_coordination',
-        executable='whole_body_task_commander',
-        name='whole_body_task_commander',
+        executable='split_commander',
+        name='split_commander',
         output='screen',
         parameters=[{
-            # Poses (in world frame)
+            # Inputs
             'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
             'ee_pose_topic':   '/ee_pose',
             'goal_pose_topic': '/goal_pose',
 
-            # Twist out -> must match controller's "~ee_twist" topic expansion
-            'ee_twist_topic': '/wb_resolved_rate_controller/ee_twist',
+            # Outputs
+            'ee_twist_topic':  '/resolved_rate_controller/ee_twist',
+            'base_cmd_topic':  '/mecanum_controller/reference',  # CHANGE if your base expects something else
 
-            # Simple task-space gains (tune as needed)
-            'kp_pos': 2.0,
-            'kp_rot': 0.1,
-            'kd_pos': 0.2,
-            'kd_rot': 0.05,
+            # Option B gains
+            'k1': 0.5,
+            'k2': 1.0,
+            'k3': 10.0,
+            'k1d': 0.1,
+            'k2d': 0.2,
 
-            # Velocity caps
-            'max_lin': 1.0,   # m/s
-            'max_ang': 0.3,   # rad/s
 
+            # Stow point in base frame (set this!)
+            'stow_point_b': [0.20, 0.00, 0.45],
+
+            # Arm PD (keep simple)
+            'kp_pos': 1.0,
+            'kp_rot': 0.0,   # start simple: no orientation
+            'kd_pos': 0.0,
+            'kd_rot': 0.0,
+
+            # Arm twist caps
+            'max_lin': 0.2,
+            'max_ang': 0.7,
+
+            # Base caps
+            'max_base_lin': 3.25,
+            'max_base_ang': 1.0,
         }]
     )
 
+    
     # Start commander only after wb_resolved_rate_controller is active
     start_commander_after_wb = RegisterEventHandler(
-        OnProcessExit(target_action=wb_rr, on_exit=[wb_task_commander])
+        OnProcessExit(target_action=wb_rr, on_exit=[split_commander])
     )
 
     # --- rosbag2 recorder ---
     topics_to_record = [
         '/mecanum_controller/reference',         # base ref (TwistStamped)
-        '/wb_resolved_rate_controller/ee_twist', # desired EE twist
+        '/resolved_rate_controller/ee_twist', # desired EE twist
         '/vrpn_mocap/RigidBody_1/pose',
         '/vrpn_mocap/RigidBody_2/pose',
         '/goal_pose',
