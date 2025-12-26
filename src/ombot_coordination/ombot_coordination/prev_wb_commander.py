@@ -161,7 +161,6 @@ class WholeBodyTaskCommander(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
 
-
         # Velocity limits
         self.declare_parameter("max_lin", 3.5)    # m/s
         self.declare_parameter("max_ang", 1.0)    # rad/s
@@ -207,7 +206,6 @@ class WholeBodyTaskCommander(Node):
         self.sub_des_twist = self.create_subscription(
             TwistStamped, "/ee_desired_twist", self.des_twist_cb, 10)
 
-
    
         self.sub_ee = self.create_subscription(
             PoseStamped, ee_pose_topic, self.ee_cb, sensor_qos)
@@ -232,7 +230,6 @@ class WholeBodyTaskCommander(Node):
         self.have_last_error = False
 
 
-
     # --- Callbacks for poses ---
     def des_pose_cb(self, msg): self.des_pose = msg
 
@@ -250,7 +247,6 @@ class WholeBodyTaskCommander(Node):
         p_b_w = np.array([t.x, t.y, t.z], dtype=float)  # base in world
         R_wb  = np.array(quat_to_rotmat(q.x, q.y, q.z, q.w), dtype=float)  # base orientation in world
         return R_wb, p_b_w
-
 
 
     def ee_cb(self, msg: PoseStamped):
@@ -309,14 +305,6 @@ class WholeBodyTaskCommander(Node):
         pg_b = [float(pg_b_np[0]), float(pg_b_np[1]), float(pg_b_np[2])]
         R_bg = (R_bw @ R_wg).tolist()
         vff = [0.0, 0.0, 0.0]
-
-        # self.get_logger().info(
-        #     f"pg_w = [{pg_w[0]:.3f}, {pg_w[1]:.3f}, {pg_w[2]:.3f}]"
-        # )
-        # self.get_logger().info(
-        #     f"pg_b = [{pg_b[0]:.3f}, {pg_b[1]:.3f}, {pg_b[2]:.3f}]"
-        # )
-
 
         # If using trajectory refs in base frame, override consistently
         if self.use_traj and self.des_pose is not None:
@@ -429,9 +417,3 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-

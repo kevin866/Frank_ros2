@@ -94,31 +94,10 @@ def generate_launch_description():
         parameters=[{
             'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
             'goal_pose_topic': '/goal_pose',
-            'offset_xyz': [-1.0, 0.0, 0.0],   # set your desired offset here (world frame)
+            'offset_xyz': [1.0, 0.0, 0.0],   # set your desired offset here (world frame)
             'latch': True,                   # True = latch once, False = follow base
         }]
     )
-
-    ee_traj = Node(
-        package='ombot_coordination',
-        executable='ee_trajectory_generator',
-        name='ee_trajectory_generator',
-        output='screen',
-        parameters=[{
-            # inputs
-            'ee_pose_topic': '/ee_pose',
-            'goal_pose_topic': '/goal_pose',
-
-            # outputs (base_link frame)
-            'ee_desired_pose_topic':  '/ee_desired_pose',
-            'ee_desired_twist_topic': '/ee_desired_twist',
-
-            # trajectory params
-            'traj_T': 4.0,
-            'publish_twist': True,   # or False if you want vff=0 for now
-        }]
-    )
-
 
 
     # Chain: JSB -> Impedance -> WholeBodyResolvedRate
@@ -137,33 +116,26 @@ def generate_launch_description():
         name='whole_body_task_commander',
         output='screen',
         parameters=[{
+            # Poses (in world frame)
             'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
             'ee_pose_topic':   '/ee_pose',
-
-            # NEW: desired trajectory topics
-            'use_traj': True,
-            'ee_desired_pose_topic':  '/ee_desired_pose',
-            'ee_desired_twist_topic': '/ee_desired_twist',
-
-            # Fallback if traj isn’t running
             'goal_pose_topic': '/goal_pose',
 
+            # Twist out -> must match controller's "~ee_twist" topic expansion
             'ee_twist_topic': '/wb_resolved_rate_controller/ee_twist',
 
+            # Simple task-space gains (tune as needed)
             'kp_pos': 2.0,
             'kp_rot': 0.1,
-            'kd_pos': 0.0,    # start with 0 if you use trajectory
+            'kd_pos': 0.2,
             'kd_rot': 0.05,
 
-            'max_lin': 1.0,
-            'max_ang': 0.3,
+            # Velocity caps
+            'max_lin': 1.0,   # m/s
+            'max_ang': 0.3,   # rad/s
 
-            # feedforward blend (safe)
-            'vff_alpha': 0.3,     # 0.0 disables vff entirely
-            'vff_cap': 0.2,       # m/s cap on vff
         }]
     )
-
 
     # Start commander only after wb_resolved_rate_controller is active
     start_commander_after_wb = RegisterEventHandler(

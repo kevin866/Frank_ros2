@@ -367,7 +367,6 @@ OMBotBaseSystem::read(const rclcpp::Time &, const rclcpp::Duration &period)
     }
     
 
-
     // --- Staggered true position refresh ---
     // Each wheel refreshes on a different cycle so only 1 wheel (typically) does ?C this tick.
     const bool do_pos_refresh = (pos_update_stride_ > 0) &&

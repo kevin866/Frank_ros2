@@ -60,6 +60,34 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description_content}, ctrl_yaml],
     )
 
+    optitrack_tf = Node(
+        package="ombot_coordination",
+        executable="optitrack_tf_pub",
+        output="screen",
+        parameters=[{
+            "pose_topic": "/vrpn_mocap/RigidBody_1/pose",
+            "world_frame": "world",
+            "base_frame": "base_link",
+            "use_planar": True,
+            "axis_fix": "xzy",
+            "yaw_offset": 0.0,
+            "alpha_pos": 0.2,
+            "alpha_yaw": 0.2,
+        }]
+    )
+
+    goal_commander = Node(
+        package="ombot_coordination",
+        executable="goal_commander",
+        output="screen",
+        parameters=[{
+            "world_frame": "world",
+            "topic": "/goal_pose",
+            "rate_hz": 5.0,
+            'goal': "0.8 1.5 0.5 0.0",
+        }]
+    )
+
     # --- Controllers (spawn chain) ---
     jsb = Node(
         package='controller_manager', executable='spawner',
@@ -86,18 +114,18 @@ def generate_launch_description():
         output='screen'
     )
 
-    goal_from_offset = Node(
-        package='ombot_coordination',
-        executable='goal_from_base_offset_latched',
-        name='goal_from_base_offset_latched',
-        output='screen',
-        parameters=[{
-            'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
-            'goal_pose_topic': '/goal_pose',
-            'offset_xyz': [1.0, 0.0, 0.0],   # set your desired offset here (world frame)
-            'latch': True,                   # True = latch once, False = follow base
-        }]
-    )
+    # goal_from_offset = Node(
+    #     package='ombot_coordination',
+    #     executable='goal_from_base_offset_latched',
+    #     name='goal_from_base_offset_latched',
+    #     output='screen',
+    #     parameters=[{
+    #         'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
+    #         'goal_pose_topic': '/goal_pose',
+    #         'offset_xyz': [1.0, 0.0, 0.0],   # set your desired offset here (world frame)
+    #         'latch': True,                   # True = latch once, False = follow base
+    #     }]
+    # )
 
 
     # Chain: JSB -> Impedance -> WholeBodyResolvedRate
@@ -111,31 +139,40 @@ def generate_launch_description():
     # --- Whole-body task commander (Python) ---
     # This node just publishes desired EE twist in base_link frame
     wb_task_commander = Node(
-        package='ombot_coordination',
-        executable='whole_body_task_commander',
-        name='whole_body_task_commander',
-        output='screen',
+        package="ombot_coordination",
+        executable="whole_body_task_commander",
+        name="whole_body_task_commander",
+        output="screen",
         parameters=[{
-            # Poses (in world frame)
-            'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
-            'ee_pose_topic':   '/ee_pose',
-            'goal_pose_topic': '/goal_pose',
+            # Frames for TF lookup
+            "world_frame": "world",
+            "base_frame": "base_link",
+
+            # Poses
+            # IMPORTANT: /ee_pose should be in base_link (FK output). If it's in world, you'll need to transform it too.
+            "ee_pose_topic":   "/ee_pose",
+            "goal_pose_topic": "/goal_pose",
+
+            # Optional trajectory refs (keep if you're using them)
+            "use_traj": True,
+            # (These are hardcoded in your code right now as /ee_desired_pose and /ee_desired_twist.
+            #  If you later parameterize them, add them here.)
 
             # Twist out -> must match controller's "~ee_twist" topic expansion
-            'ee_twist_topic': '/wb_resolved_rate_controller/ee_twist',
+            "ee_twist_topic": "/wb_resolved_rate_controller/ee_twist",
 
-            # Simple task-space gains (tune as needed)
-            'kp_pos': 2.0,
-            'kp_rot': 0.1,
-            'kd_pos': 0.2,
-            'kd_rot': 0.05,
+            # Gains
+            "kp_pos": 2.0,
+            "kp_rot": 0.0,   # consider 0.0 initially until frames are verified
+            "kd_pos": 0.2,
+            "kd_rot": 0.0,
 
-            # Velocity caps
-            'max_lin': 1.0,   # m/s
-            'max_ang': 0.3,   # rad/s
-
-        }]
+            # Velocity caps (real robot: start smaller)
+            "max_lin": 3.5,  # m/s (suggested safer start than 1.0)
+            "max_ang": 1.0,  # rad/s
+        }],
     )
+
 
     # Start commander only after wb_resolved_rate_controller is active
     start_commander_after_wb = RegisterEventHandler(
@@ -196,13 +233,16 @@ def generate_launch_description():
         robot_state_publisher,
         control_node,
 
+        optitrack_tf,
+        goal_commander,
+
         # Controllers: mecanum can start anytime; chain the arm controllers
         mecanum_spawner,
         jsb,
         chain_imp_after_jsb,
         chain_wb_after_imp,
 
-        goal_from_offset,
+        # goal_from_offset,
 
         # Start commander + bag once WB controller is active
         start_commander_after_wb,

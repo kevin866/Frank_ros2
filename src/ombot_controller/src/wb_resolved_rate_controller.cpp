@@ -669,20 +669,20 @@ WholeBodyResolvedRateController::update_and_write_commands(
     base_cmd.header.stamp = now;
     base_cmd.header.frame_id = base_link_;  // e.g. "base_link"
     base_cmd.twist.linear.x  = -k_base * v_base[0];
-    base_cmd.twist.linear.y  = k_base * v_base[1];
+    base_cmd.twist.linear.y  = -k_base * v_base[1];
     base_cmd.twist.linear.z  = 0.0;
     base_cmd.twist.angular.x = 0.0;
     base_cmd.twist.angular.y = 0.0;
     base_cmd.twist.angular.z = k_base * v_base[2];
-    // base_cmd_pub_->publish(base_cmd);
+    base_cmd_pub_->publish(base_cmd);
 
-    RCLCPP_INFO_THROTTLE(
-        get_node()->get_logger(), *get_node()->get_clock(), 1000,
-        "WB: v_base=(%.3f %.3f %.3f)  qdot=(%.3f %.3f %.3f %.3f %.3f %.3f)  r_be=(%.3f %.3f)",
-        v_base.x(), v_base.y(), v_base.z(),
-        qdot[0], qdot[1], qdot[2], qdot[3], qdot[4], qdot[5],
-        r_be.x(), r_be.y()
-    );
+    // RCLCPP_INFO_THROTTLE(
+    //     get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    //     "WB: v_base=(%.3f %.3f %.3f)  qdot=(%.3f %.3f %.3f %.3f %.3f %.3f)  r_be=(%.3f %.3f)",
+    //     v_base.x(), v_base.y(), v_base.z(),
+    //     qdot[0], qdot[1], qdot[2], qdot[3], qdot[4], qdot[5],
+    //     r_be.x(), r_be.y()
+    // );
 
     // v_ee contribution from arm joints
     Eigen::Matrix<double, 6, 1> v_ee_arm = Je * qdot;
@@ -699,7 +699,7 @@ WholeBodyResolvedRateController::update_and_write_commands(
     //     v_ee_arm(0), v_ee_arm(1), v_ee_arm(2), v_ee_arm(3), v_ee_arm(4), v_ee_arm(5)
     // );
 
-    // write_refs_to_slots();  
+    write_refs_to_slots();  
     static double dt_min = 1e9;
     static double dt_max = 0.0;
     static double dt_sum = 0.0;
