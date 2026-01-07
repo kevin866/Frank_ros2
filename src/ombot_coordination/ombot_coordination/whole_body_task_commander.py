@@ -5,6 +5,7 @@ import math
 from dataclasses import dataclass
 from typing import Optional
 from tf2_ros import Buffer, TransformListener
+from ombot_msgs.msg import WholeBodyCmd
 
 import rclpy
 from rclpy.node import Node
@@ -144,7 +145,7 @@ class WholeBodyTaskCommander(Node):
         self.declare_parameter("ee_pose_topic", "/ee_pose")
         self.declare_parameter("goal_pose_topic", "/goal_pose")
         # Controller's private "~ee_twist" topic will expand to "<controller_name>/ee_twist"
-        self.declare_parameter("ee_twist_topic", "/wb_resolved_rate_controller/ee_twist")
+        self.declare_parameter("desired_twist_topic", "/wb_resolved_rate_controller/desired_twist")
 
         # Simple PD gains in base frame
         self.declare_parameter("kp_pos", 1.0)
@@ -168,7 +169,7 @@ class WholeBodyTaskCommander(Node):
 
         ee_pose_topic   = self.get_parameter("ee_pose_topic").get_parameter_value().string_value
         goal_pose_topic = self.get_parameter("goal_pose_topic").get_parameter_value().string_value
-        ee_twist_topic  = self.get_parameter("ee_twist_topic").get_parameter_value().string_value
+        desired_twist_topic  = self.get_parameter("desired_twist_topic").get_parameter_value().string_value
 
         self.kp_pos = self.get_parameter("kp_pos").value
         self.kp_rot = self.get_parameter("kp_rot").value
@@ -176,6 +177,7 @@ class WholeBodyTaskCommander(Node):
         self.kd_rot = self.get_parameter("kd_rot").value
         self.max_lin = self.get_parameter("max_lin").value
         self.max_ang = self.get_parameter("max_ang").value
+
 
         self.ee:   Optional[Pose3D] = None
         self.goal: Optional[Pose3D] = None
@@ -187,6 +189,8 @@ class WholeBodyTaskCommander(Node):
 
         self.des_pose = None
         self.des_twist = None
+        self.base_des_twist = None
+
 
 
 
@@ -207,6 +211,8 @@ class WholeBodyTaskCommander(Node):
         self.sub_des_twist = self.create_subscription(
             TwistStamped, "/ee_desired_twist", self.des_twist_cb, 10)
 
+        self.sub_base_des = self.create_subscription(
+            TwistStamped, "/base_desired_twist", self.base_des_twist_cb, 10)
 
    
         self.sub_ee = self.create_subscription(
@@ -216,8 +222,12 @@ class WholeBodyTaskCommander(Node):
             PoseStamped, goal_pose_topic, self.goal_cb, reliable_qos)
         
         # Publisher to the controller; reliable is fine here
-        self.pub_twist = self.create_publisher(
-            TwistStamped, ee_twist_topic, reliable_qos)
+        # self.pub_twist = self.create_publisher(
+        #     TwistStamped, desired_twist_topic, reliable_qos)
+
+        self.pub_wb_cmd = self.create_publisher(WholeBodyCmd, "/wb_cmd", 10)
+
+        
 
         self.last_time = self.get_clock().now()
         self.timer = self.create_timer(0.01, self.spin)  # 100 Hz
@@ -231,7 +241,9 @@ class WholeBodyTaskCommander(Node):
         self.last_e_rot = [0.0, 0.0, 0.0]
         self.have_last_error = False
 
-
+        
+    def base_des_twist_cb(self, msg: TwistStamped):
+        self.base_des_twist = msg
 
     # --- Callbacks for poses ---
     def des_pose_cb(self, msg): self.des_pose = msg
@@ -249,7 +261,23 @@ class WholeBodyTaskCommander(Node):
 
         p_b_w = np.array([t.x, t.y, t.z], dtype=float)  # base in world
         R_wb  = np.array(quat_to_rotmat(q.x, q.y, q.z, q.w), dtype=float)  # base orientation in world
+
+        # S = np.diag([1.0, -1.0, 1.0])  # flip world Y
+
+        # p_b_w = S @ p_b_w
+        # R_wb  = S @ R_wb
         return R_wb, p_b_w
+
+    # def lookup_world_T_base(self):
+    #     tf = self.tf_buffer.lookup_transform(self.world_frame, self.base_frame, rclpy.time.Time())
+    #     t = tf.transform.translation
+    #     q = tf.transform.rotation
+
+    #     p_raw = np.array([t.x, t.y, t.z], dtype=float)
+    #     R_raw = np.array(quat_to_rotmat(q.x, q.y, q.z, q.w), dtype=float)  # world <- base
+    
+    #     return R_wb, p_b_w
+
 
 
 
@@ -310,14 +338,6 @@ class WholeBodyTaskCommander(Node):
         R_bg = (R_bw @ R_wg).tolist()
         vff = [0.0, 0.0, 0.0]
 
-        # self.get_logger().info(
-        #     f"pg_w = [{pg_w[0]:.3f}, {pg_w[1]:.3f}, {pg_w[2]:.3f}]"
-        # )
-        # self.get_logger().info(
-        #     f"pg_b = [{pg_b[0]:.3f}, {pg_b[1]:.3f}, {pg_b[2]:.3f}]"
-        # )
-
-
         # If using trajectory refs in base frame, override consistently
         if self.use_traj and self.des_pose is not None:
             if self.des_pose.header.frame_id == self.base_frame:
@@ -332,8 +352,11 @@ class WholeBodyTaskCommander(Node):
                         self.des_pose.pose.orientation.z,
                         self.des_pose.pose.orientation.w]
                 R_bg = quat_to_rotmat(*qg_b)  # base -> desired
+                # self.log.warn(1.0, f"Using trajectory reference in {self.base_frame} frame")
             else:
                 self.log.warn(1.0, f"des_pose in '{self.des_pose.header.frame_id}', expected '{self.base_frame}'", key="des_pose_frame")
+        
+
 
 
 
@@ -395,18 +418,30 @@ class WholeBodyTaskCommander(Node):
 
 
         # 7) Publish command in base_link frame for whole-body controller
-        msg = TwistStamped()
-        msg.header.stamp = now.to_msg()
-        msg.header.frame_id = "base_link"   # should match base_link used in your C++ controller
+        # --- build WholeBodyCmd (single output) ---
+        cmd = WholeBodyCmd()
+        cmd.header.stamp = now.to_msg()
+        cmd.header.frame_id = self.base_frame
+        cmd.valid = True
 
-        msg.twist.linear.x  = float(vx)
-        msg.twist.linear.y  = float(vy)
-        msg.twist.linear.z  = float(vz)
-        msg.twist.angular.x = float(wx)
-        msg.twist.angular.y = float(wy)
-        msg.twist.angular.z = float(wz)
+        # EE desired twist (what you already compute)
+        cmd.ee.linear.x  = float(vx)
+        cmd.ee.linear.y  = float(vy)
+        cmd.ee.linear.z  = float(vz)
+        cmd.ee.angular.x = float(wx)
+        cmd.ee.angular.y = float(wy)
+        cmd.ee.angular.z = float(wz)
+        # Base desired twist (pass-through from traj generator)
+        if self.use_traj and self.base_des_twist is not None:
+            cmd.bvx = float(self.base_des_twist.twist.linear.x)
+            cmd.bvy = float(self.base_des_twist.twist.linear.y)
+            cmd.bwz = float(self.base_des_twist.twist.angular.z)
+        else:
+            cmd.bvx = 0.0
+            cmd.bvy = 0.0
+            cmd.bwz = 0.0
+        self.pub_wb_cmd.publish(cmd)
 
-        self.pub_twist.publish(msg)
         # self.log.info(
         #     1.0,
         #     f"twist = lin({vx:.3f}, {vy:.3f}, {vz:.3f}), "

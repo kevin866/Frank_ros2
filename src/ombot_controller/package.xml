@@ -12,7 +12,10 @@
 
   <!-- Build deps -->
   <build_depend>eigen3_cmake_module</build_depend>
-  <build_depend>Eigen3</build_depend>
+  <!-- <build_depend>Eigen3</build_depend> -->
+  <!-- <build_depend>eigen</build_depend> -->
+  <depend>eigen</depend>
+
 
   <!-- Code deps -->
   <depend>pluginlib</depend>
@@ -24,6 +27,9 @@
   <depend>rclcpp_lifecycle</depend>
   <depend>std_msgs</depend>
   <depend>kdl_parser</depend>
+  <depend>ombot_msgs</depend>
+  <depend>osqp_vendor</depend>
+
   <!-- <depend>hardware_interface</depend> -->
 
   <depend>geometry_msgs</depend>
@@ -33,9 +39,14 @@
 
   <!-- Exec deps -->
   <exec_depend>eigen3_cmake_module</exec_depend>
-  <exec_depend>Eigen3</exec_depend>
+  <!-- <exec_depend>Eigen3</exec_depend> -->
 
   <export>
+    <!-- <controller_interface plugin="${prefix}/ombot_controller.xml"/> -->
+    <!-- <controller_interface plugin="${prefix}/share/ombot_controller/ombot_controller.xml"/> -->
+    <controller_manager plugin="${prefix}/share/ombot_controller/ombot_controller.xml"/>
+    <controller_interface plugin="${prefix}/share/ombot_controller/ombot_controller.xml"/>
+
     <build_type>ament_cmake</build_type>
   </export>
 </package>

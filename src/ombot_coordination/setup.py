@@ -27,6 +27,7 @@ setup(
             'ee_trajectory_generator = ombot_coordination.ee_trajectory_generator:main',
             'optitrack_tf_pub = ombot_coordination.optitrack_tf_pub:main',
             'goal_commander = ombot_coordination.goal_commander:main',
+            'dual_traj_generator = ombot_coordination.dual_traj_generator:main',
         ],
     },
 )

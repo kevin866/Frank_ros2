@@ -18,6 +18,18 @@ OUT_CSV = "src/ombot_sysid/sysid_data.csv"
 TOPIC_TAU = "/joint_excitation_controller/tau_cmd"
 TOPIC_JS  = "/joint_states"
 
+
+BAG_DIR = "ombot_run1"
+OUT_DIR = "plots_csv"   # folder to write many CSVs
+
+TOPICS = {
+  "/ee_pose": "pose",
+  "/ee_desired_pose": "pose",
+  "/ee_desired_twist": "twist",
+  "/wb_resolved_rate_controller/ee_twist": "twist",
+  "/base_desired_twist": "base_twist",
+}
+
 # Optional constant time shift for tau_cmd (in seconds)
 # Positive = move tau later in time, Negative = earlier
 SHIFT_TAU_SEC = 0.0

@@ -96,6 +96,19 @@ def generate_launch_description():
         arguments=["gravity_cancel_controller", "-c", "/controller_manager"],
         output="screen",
     )
+    # gravity_controller_spawner = Node(
+    #     package="controller_manager",
+    #     executable="spawner",
+    #     arguments=[
+    #         "gravity_cancel_controller",
+    #         "-c", "/controller_manager",
+    #         "--ros-args",
+    #         "--log-level", "debug",
+    #     ],
+    #     output="screen",
+    # )
+
+
 
     # Start order: controller_manager + RSP come up, then spawn JSB, then gravity controller, then RViz.
     delay_rviz_after_jsb = RegisterEventHandler(

@@ -18,7 +18,7 @@
 #include "kdl/chainjnttojacsolver.hpp"
 #include "Eigen/Dense"
 #include <kdl/chainfksolverpos_recursive.hpp>
-
+#include "ombot_msgs/msg/whole_body_cmd.hpp"
 
 namespace ombot_controller {
 
@@ -103,8 +103,10 @@ private:
   // In wb_resolved_rate_controller.hpp
   double base_weight_{1.0};  // cost weight for base DOFs
   double arm_weight_{1.0};   // cost weight for arm joints
-  double base_cmd_scale_ = 1.0;  // or 3.0, tune this
-  double v_lin_scale_ = 10.0;    // scale linear velocities
+  double base_cmd_scale_ = 5.0;  // or 3.0, tune this
+  double v_lin_scale_ = 1.0;    // scale linear velocities
+  double base_task_weight_ = 1.0;
+  double ee_task_weight_ = 1.0;
   // double v_ang_scale_ = 0.000001;    // scale angular velocities
 
   // double v_lin_scale_ = 0.2;
@@ -129,6 +131,10 @@ private:
   // State interfaces (read from hardware)
   std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>> pos_states_;
   std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>> vel_states_;
+  rclcpp::Subscription<ombot_msgs::msg::WholeBodyCmd>::SharedPtr wb_cmd_sub_;
+  // Cmd cmd_;                         // your internal command struct
+  // std::mutex cmd_mtx_;              // if controller runs in realtime loop
+
 
   // Reference interfaces (we own & export, other controllers can claim *to read*)
   // But we ourselves will be the writer.
@@ -140,17 +146,27 @@ private:
   std::vector<RefSlot> vel_ref_slots_;
 
   // Simple RT command buffer for desired EE twist
-  struct Cmd { double vx=0, vy=0, vz=0, wx=0, wy=0, wz=0; bool valid=false; };
+  // struct Cmd { double vx=0, vy=0, vz=0, wx=0, wy=0, wz=0; bool valid=false; };
+  struct Cmd
+  {
+    bool valid{false};
+
+    // EE desired twist (base_link frame)
+    double vx{0}, vy{0}, vz{0};
+    double wx{0}, wy{0}, wz{0};
+
+    // Base desired twist (base_link frame): [vx, vy, wz]
+    double bvx{0}, bvy{0}, bwz{0};
+  };
+
   realtime_tools::RealtimeBuffer<Cmd> cmd_rt_;
   Cmd cmd_cached_;
-
-  rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr sub_twist_;
 
   // integrator state
   std::vector<double> q_ref_;  // integrated q
   std::vector<double> qdot_ref_;
 
-  void twist_cb(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
+  void wbCmdCb(const ombot_msgs::msg::WholeBodyCmd::SharedPtr msg);
   void write_refs_to_slots();
 
 

@@ -26,6 +26,9 @@ class GoalCommander(Node):
         self.goal = PoseStamped()
         self.goal.header.frame_id = self.world_frame
 
+        self.base_pub = self.create_publisher(PoseStamped, "/base_goal_pose", 10)
+
+
         self.get_logger().info(
             "GoalCommander ready.\n"
             "Use: ros2 param set /goal_commander goal \"x y z yaw\"\n"
@@ -57,8 +60,27 @@ class GoalCommander(Node):
                 self.get_logger().warn(f"Bad goal param '{s}': {e}")
 
         if self.have_goal:
-            self.goal.header.stamp = self.get_clock().now().to_msg()
+            now = self.get_clock().now().to_msg()
+
+            # publish EE goal (unchanged)
+            self.goal.header.stamp = now
             self.pub.publish(self.goal)
+
+            # -----------------------------
+            # base goal = EE goal shifted
+            # -----------------------------
+            base_goal = PoseStamped()
+            base_goal.header.stamp = now
+            base_goal.header.frame_id = self.world_frame
+
+            base_goal.pose.position.x = self.goal.pose.position.x - 0.2
+            base_goal.pose.position.y = self.goal.pose.position.y
+            base_goal.pose.position.z = self.goal.pose.position.z
+
+            base_goal.pose.orientation = self.goal.pose.orientation
+
+            self.base_pub.publish(base_goal)
+
 
 def main():
     rclpy.init()

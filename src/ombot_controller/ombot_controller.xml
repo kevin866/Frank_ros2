@@ -34,4 +34,13 @@
       Whole-body (arm + base) resolved-rate controller.
     </description>
   </class>
+
+  <class name="ombot_controller/WholeBodyQPController"
+         type="ombot_controller::WholeBodyQPController"
+         base_class_type="controller_interface::ChainableControllerInterface">
+    <description>
+      Whole-body (arm + base) controller using QP optimization.
+    </description>
+  </class>
+
 </library>

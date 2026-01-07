@@ -12,7 +12,7 @@ class CSVLogger(Node):
         # Prepare CSV files
         self.files = {
             '/mecanum_controller/reference': open('mecanum_controller_reference.csv', 'w', newline=''),
-            '/resolved_rate_controller/ee_twist': open('resolved_rate_controller_ee_twist.csv', 'w', newline=''),
+            '/wb_resolved_rate_controller/desired_twist': open('resolved_rate_controller_ee_twist.csv', 'w', newline=''),
             '/goal_pose': open('goal_pose.csv', 'w', newline=''),
             '/vrpn_mocap/RigidBody_1/pose': open('vrpn_mocap_RigidBody_1_pose.csv', 'w', newline='')
         }
@@ -33,8 +33,8 @@ class CSVLogger(Node):
             10)
         self.create_subscription(
             TwistStamped,
-            '/resolved_rate_controller/ee_twist',
-            lambda msg, topic='/resolved_rate_controller/ee_twist': self.twist_cb(msg, topic),
+            '/wb_resolved_rate_controller/desired_twist',
+            lambda msg, topic='/wb_resolved_rate_controller/desired_twist': self.twist_cb(msg, topic),
             10)
         self.create_subscription(
             PoseStamped,

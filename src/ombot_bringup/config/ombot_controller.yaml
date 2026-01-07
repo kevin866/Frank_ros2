@@ -29,6 +29,9 @@ controller_manager:
     wb_resolved_rate_controller:
       type: ombot_controller/WholeBodyResolvedRateController
 
+    wb_qp_controller:
+      type: ombot_controller/WholeBodyQPController
+
 joint_state_broadcaster:
   ros__parameters: {}
       
@@ -100,8 +103,8 @@ wb_resolved_rate_controller:
     joints: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6]
     # null_kp: [3.0, 3.0, 2.0, 1.0, 0.5, 0.3]
     # null_kd: [0.8, 0.8, 0.6, 0.4, 0.25, 0.2]
-    null_kp: [15.0, 15.0, 10.0, 5.0, 2.5, 1.5]
-    null_kd: [4.0, 4.0, 3.0, 2.0, 1.25, 1.0]
+    null_kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    null_kd: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     q_home:  [0.0, -0.66, 0.4, 0.0, 0.30, 0.0]
     base_link: link_1
     tip_link:  end_link
@@ -118,7 +121,7 @@ wb_resolved_rate_controller:
     v_deadband: 0.0001
     base_weight: 1.0
     arm_weight: 1.0
-    base_cmd_scale: 1.0
+    base_cmd_scale: 10.0
 
 
 mecanum_controller:
@@ -180,4 +183,53 @@ joint_excitation_controller:
     chirp_f_start: 0.1        # Hz (if you use chirp mode)
     chirp_f_end: 5.0          # Hz
     test_duration: 60.0       # s; 0 => run until you stop controller
+
+
+wb_qp_controller:
+  ros__parameters:
+    # required
+    # joints: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
+    joints: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6]
+    base_link: "link_1"
+    tip_link: "end_link"
+    inner_controller: "joint_impedance_controller"
+    cmd_timeout: 0.25
+
+    # limits (start safe)
+    qdot_limit: 0.8
+    dt_ceiling: 0.03
+    step_limit: 0.01
+    base_vx_limit: 2.5
+    base_vy_limit: 2.5
+    base_wz_limit: 0.30
+    base_cmd_scale: 5.0
+
+    # weights
+    lambda: 0.05
+    base_weight: 1.0
+    arm_weight: 1.0
+    base_task_weight: 0.15
+    ee_task_weight: 1.0
+    posture_weight: 0.08
+    w_pos: 1.0
+    w_rot: 0.4
+    # w_z: 0.7
+    # null_kp: [0.4, 0.4, 0.4, 0.25, 0.25, 0.15]
+    # null_kd: [0.05, 0.05, 0.05, 0.03, 0.03, 0.02]
+    null_kp: [0.0, 0.0, 0.4, 0.25, 0.25, 0.15]
+    null_kd: [0.05, 0.05, 0.05, 0.03, 0.03, 0.02]
+    q_home:  [0.0, -0.6, 1.2, 0.0, 0.8, 0.0]
+
+    # joint bounds (optional but recommended)
+    q_min: [-3.14, -2.5, -2.5, -3.14, -2.5, -3.14]
+    q_max: [ 3.14,  2.5,  2.5,  3.14,  2.5,  3.14]
+
+    # obstacles / CBF
+    obstacles_topic: "/obstacles"
+    obstacles_timeout: 0.25
+    cbf_max_obstacles: 20
+    cbf_alpha: 3.0
+    ee_radius: 0.02
+    cbf_margin: 0.03
+    cbf_activate_h: 0.00
 

@@ -22,9 +22,13 @@ find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)        
 find_package(orocos_kdl REQUIRED)
+find_package(ombot_msgs REQUIRED)
+find_package(osqp_vendor REQUIRED)
+find_package(OsqpEigen REQUIRED)
+
 
 add_executable(mecanum_forward_cmd src/mecanum_forward_cmd.cpp)
-ament_target_dependencies(mecanum_forward_cmd rclcpp geometry_msgs)
+ament_target_dependencies(mecanum_forward_cmd rclcpp geometry_msgs ombot_msgs)
 install(TARGETS mecanum_forward_cmd
   DESTINATION lib/${PROJECT_NAME})
 
@@ -35,19 +39,30 @@ add_library(${PROJECT_NAME} SHARED
   src/joint_excitation_controller.cpp
   src/resolved_rate_controller.cpp
   src/wb_resolved_rate_controller.cpp
+  src/wb_qp_controller.cpp
+
 )
+# target_include_directories(${PROJECT_NAME} PUBLIC
+#   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+#   $<INSTALL_INTERFACE:include>
+# )
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
+  # /opt/ros/humble/include/osqp
 )
+
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 ament_target_dependencies(${PROJECT_NAME}
   pluginlib rcpputils controller_interface realtime_tools
-  trajectory_msgs rclcpp rclcpp_lifecycle std_msgs kdl_parser orocos_kdl
+  trajectory_msgs rclcpp rclcpp_lifecycle std_msgs kdl_parser orocos_kdl ombot_msgs osqp_vendor OsqpEigen
 )
-target_link_libraries(${PROJECT_NAME} Eigen3::Eigen)
+# target_link_libraries(${PROJECT_NAME} Eigen3::Eigen)
 
-
+target_link_libraries(${PROJECT_NAME}
+  Eigen3::Eigen
+  OsqpEigen::OsqpEigen
+)
 
 add_executable(ee_to_base src/ee_to_base.cpp)
 ament_target_dependencies(ee_to_base
@@ -63,12 +78,7 @@ DESTINATION lib/${PROJECT_NAME})          # <-- executables go here in ROS 2
 
 # Export controller plugins
 pluginlib_export_plugin_description_file(controller_interface ombot_controller.xml)
-
-# Tools (optional)
-# add_executable(send_trajectory src/reference_generator/send_trajectory.cpp)
-# add_executable(send_trajectory_om src/reference_generator/send_trajectory_om.cpp)
-# ament_target_dependencies(send_trajectory rclcpp trajectory_msgs)
-# ament_target_dependencies(send_trajectory_om rclcpp trajectory_msgs)
+pluginlib_export_plugin_description_file(controller_manager ombot_controller.xml)
 
 # Install
 install(TARGETS ${PROJECT_NAME}

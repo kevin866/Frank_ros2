@@ -336,7 +336,7 @@ class WholeBodyTaskCommander(Node):
         ]
         # e_pos_b = np.array([e_pos_b[0], 0.0, 0.0])  # only X
 
-        self.log.info(1.0, f"e_pos_b = {e_pos_b}", key="e_pos_b")
+        # self.log.info(1.0, f"e_pos_b = {e_pos_b}", key="e_pos_b")
 
         # e_pos_b and e_rot_b already computed
 

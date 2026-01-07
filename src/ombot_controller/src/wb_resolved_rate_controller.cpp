@@ -107,34 +107,6 @@ WholeBodyResolvedRateController::on_configure(const rclcpp_lifecycle::State &) {
     }
   }
 
-
-  // // null_kp
-  // if (get_node()->has_parameter("null_kp")) {
-  //   auto p = get_node()->get_parameter("null_kp");
-  //   if (p.get_type() == rclcpp::PARAMETER_DOUBLE_ARRAY) {
-  //     auto v = p.as_double_array();
-  //     for (size_t i = 0; i < N; ++i)
-  //       null_kp_[i] = v[i % v.size()];
-  //   } else if (p.get_type() == rclcpp::PARAMETER_DOUBLE) {
-  //     double s = p.as_double();
-  //     std::fill(null_kp_.begin(), null_kp_.end(), s);
-  //   }
-  // }
-
-  // // null_kd
-  // if (get_node()->has_parameter("null_kd")) {
-  //   auto p = get_node()->get_parameter("null_kd");
-  //   if (p.get_type() == rclcpp::PARAMETER_DOUBLE_ARRAY) {
-  //     auto v = p.as_double_array();
-  //     for (size_t i = 0; i < N; ++i)
-  //       null_kd_[i] = v[i % v.size()];
-  //   } else if (p.get_type() == rclcpp::PARAMETER_DOUBLE) {
-  //     double s = p.as_double();
-  //     std::fill(null_kd_.begin(), null_kd_.end(), s);
-  //   }
-  // }
-
-
   // KDL chain
   std::string urdf_xml = get_node()->get_parameter("robot_description").as_string();
   if (urdf_xml.empty()) {
@@ -155,9 +127,15 @@ WholeBodyResolvedRateController::on_configure(const rclcpp_lifecycle::State &) {
 
 
   // subscribe desired EE twist
-  sub_twist_ = get_node()->create_subscription<geometry_msgs::msg::TwistStamped>(
-      "~/ee_twist", rclcpp::SystemDefaultsQoS(),
-      std::bind(&WholeBodyResolvedRateController::twist_cb, this, std::placeholders::_1));
+  // sub_twist_ = get_node()->create_subscription<geometry_msgs::msg::TwistStamped>(
+  //     "~/wb_cmd", rclcpp::SystemDefaultsQoS(),
+  //     std::bind(&WholeBodyResolvedRateController::twist_cb, this, std::placeholders::_1));
+
+  wb_cmd_sub_ = get_node()->create_subscription<ombot_msgs::msg::WholeBodyCmd>(
+    "/wb_cmd", rclcpp::SystemDefaultsQoS(),
+    std::bind(&WholeBodyResolvedRateController::wbCmdCb, this, std::placeholders::_1)
+  );
+
 
   // pre-size integrators
   q_ref_.assign(joint_names_.size(), 0.0);
@@ -183,9 +161,6 @@ bool WholeBodyResolvedRateController::on_set_chained_mode(bool /* chained */) {
   return true;
 }
 
-// InterfaceConfiguration WholeBodyResolvedRateController::command_interface_configuration() const {
-//   return { interface_configuration_type::NONE, {} };
-// }
 
 controller_interface::InterfaceConfiguration
 WholeBodyResolvedRateController::command_interface_configuration() const
@@ -295,33 +270,35 @@ WholeBodyResolvedRateController::on_deactivate(const rclcpp_lifecycle::State &) 
 }
 
 
-// void WholeBodyResolvedRateController::twist_cb(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
-//   Cmd c; c.vx=msg->twist.linear.x; c.vy=msg->twist.linear.y; c.vz=msg->twist.linear.z;
-//   c.wx=msg->twist.angular.x; c.wy=msg->twist.angular.y; c.wz=msg->twist.angular.z; c.valid=true;
-//   cmd_rt_.writeFromNonRT(c);
-// }
-void WholeBodyResolvedRateController::twist_cb(const geometry_msgs::msg::TwistStamped::SharedPtr msg)
+void WholeBodyResolvedRateController::wbCmdCb(const ombot_msgs::msg::WholeBodyCmd::SharedPtr msg)
 {
   Cmd c;
-  c.vx = msg->twist.linear.x;  c.vy = msg->twist.linear.y;  c.vz = msg->twist.linear.z;
-  c.wx = msg->twist.angular.x; c.wy = msg->twist.angular.y; c.wz = msg->twist.angular.z;
+  c.valid = msg->valid;
 
-  // optional: ignore bad frame
-  // if (!expected_frame_.empty() && !msg->header.frame_id.empty()
-  //     && msg->header.frame_id != expected_frame_) {
-  //   // Don’t accept; leave c.valid=false so watchdog will idle
-  //   cmd_rt_.writeFromNonRT(Cmd{});
-  //   return;
-  // }
+  // EE twist (base_link)
+  c.vx = msg->ee.linear.x;
+  c.vy = msg->ee.linear.y;
+  c.vz = msg->ee.linear.z;
 
-  c.valid = true;
+  c.wx = msg->ee.angular.x;
+  c.wy = msg->ee.angular.y;
+  c.wz = msg->ee.angular.z;
+
+  // Base desired twist (base_link): [vx, vy, wz]
+  c.bvx = msg->bvx;
+  c.bvy = msg->bvy;
+  c.bwz = msg->bwz;
+  
+  last_cmd_time_ = msg->header.stamp;
+
+  // Optional: reject wrong frame
+  // if (msg->header.frame_id != "base_link") { c.valid = false; }
   cmd_rt_.writeFromNonRT(c);
-  last_cmd_time_ = get_node()->now();
+  // {
+  //   std::lock_guard<std::mutex> lock(cmd_mtx_);
+  //   cmd_ = c;
+  // }
 }
-
-
-
-
 
 
 void WholeBodyResolvedRateController::write_refs_to_slots() {
@@ -499,30 +476,74 @@ WholeBodyResolvedRateController::update_and_write_commands(
 
   // After filling Jb normally:
   double k_base = base_cmd_scale_;  // same factor as you multiply the command with
-  Jb *= k_base;
+  // Jb *= k_base;
 
+  const int M = static_cast<int>(3 + N);  // 3 base + N joints
 
-  // Whole-body J: [ J_base | J_arm ]  (6 x (3+N))
-  Eigen::Matrix<double, 6, Eigen::Dynamic> Jwhole(6, 3 + N);
-  Jwhole.block<6,3>(0,0)       = Jb;
-  Jwhole.block(0,3,6,N)        = Je;
+  // 9xM stacked Jacobian
+  Eigen::MatrixXd Jstack(9, M);
+  Jstack.setZero();
+
+  // Base tracking rows: Vb = [vx vy wz] directly maps to base DOFs
+  Jstack.block<3,3>(0,0).setIdentity();
+
+  // EE rows: [Jb Je]
+  Jstack.block<6,3>(3,0) = Jb;          // 6x3
+  Jstack.block(3,3,6,N)  = Je;          // 6xN
+
+  // // Whole-body J: [ J_base | J_arm ]  (6 x (3+N))
+  // Eigen::Matrix<double, 6, Eigen::Dynamic> Jwhole(6, 3 + N);
+  // Jwhole.block<6,3>(0,0)       = Jb;
+  // Jwhole.block(0,3,6,N)        = Je;
+
+  Eigen::Matrix<double,9,1> vstack;
+  vstack.setZero();
+
+  // Base desired (trajectory tracking command)
+  vstack(0) = cmd_cached_.bvx;
+  vstack(1) = cmd_cached_.bvy;
+  vstack(2) = cmd_cached_.bwz;
+
+  // EE desired (trajectory tracking command)
+  vstack.segment<6>(3) << cmd_cached_.vx, cmd_cached_.vy, cmd_cached_.vz,
+                          cmd_cached_.wx, cmd_cached_.wy, cmd_cached_.wz;
+
 
   double v_lin_gain = v_lin_scale_;   // e.g. 1.0, 2.0, 5.0
   double v_ang_gain = v_ang_scale_;   // maybe smaller than linear
 
-  Eigen::Matrix<double, 6, 1> v;
-  v << cmd_cached_.vx, cmd_cached_.vy, cmd_cached_.vz,
-      cmd_cached_.wx, cmd_cached_.wy, cmd_cached_.wz;
+  // Eigen::Matrix<double, 6, 1> v;
+  // v << cmd_cached_.vx, cmd_cached_.vy, cmd_cached_.vz,
+  //     cmd_cached_.wx, cmd_cached_.wy, cmd_cached_.wz;
 
   // Scale translational vs rotational differently if you want
-  v.head<3>() *= v_lin_gain;   // x,y,z
-  v.tail<3>() *= v_ang_gain;   // wx,wy,wz
-  v(2) *= 0.02;  // z gets extra reduction
+  vstack.segment<3>(0) *= base_task_weight_;     // new param
+  vstack.segment<3>(0) *= v_lin_gain;   // x,y,z
+  vstack.segment<3>(3) *= v_ang_gain;   // wx,wy,wz
+  vstack(5) *= 0.02;  // z gets extra reduction
+
+  RCLCPP_INFO_THROTTLE(
+    get_node()->get_logger(),
+    *get_node()->get_clock(),
+    1000,   // ms
+    "vstack: base[vx=%.3f vy=%.3f wz=%.3f] ee[vx=%.3f vy=%.3f vz=%.3f wx=%.3f wy=%.3f wz=%.3f]",
+    vstack(0), vstack(1), vstack(2),
+    vstack(3), vstack(4), vstack(5),
+    vstack(6), vstack(7), vstack(8)
+  );
+
+
+  Eigen::Matrix<double,9,9> Wt = Eigen::Matrix<double,9,9>::Identity();
+  Wt.block<3,3>(0,0) *= base_task_weight_;  // e.g. 1.0
+  Wt.block<6,6>(3,3) *= ee_task_weight_;    // e.g. 2.0 (prioritize EE)
+
+  Eigen::MatrixXd Jw = Wt * Jstack;
+  Eigen::Matrix<double,9,1> vw = Wt * vstack;
+
 
   // 5) Weighted damped resolved-rate: minimize ||J u - v||^2 + λ^2 ||W u||^2
   // We implement this by column-scaling J: J_scaled = J * W^{-1}
   const double lam2 = lambda_ * lambda_;
-  const int M = static_cast<int>(3 + N);  // total DOFs: 3 base + N joints
 
   // DOF weights: larger = more expensive motion on that DOF
   Eigen::VectorXd w(M);
@@ -534,18 +555,19 @@ WholeBodyResolvedRateController::update_and_write_commands(
   Eigen::VectorXd inv_w = w.cwiseInverse();  // W^{-1} diagonal entries
 
   // Column-scaled whole-body Jacobian: J_scaled = Jwhole * W^{-1}
-  Eigen::MatrixXd J_scaled = Jwhole;  // 6 x M
+  // Eigen::MatrixXd J_scaled = Jwhole;  // 6 x M
+  Eigen::MatrixXd J_scaled = Jw;
   for (int j = 0; j < M; ++j) {
     J_scaled.col(j) *= inv_w(j);
   }
 
   // A = J_scaled J_scaled^T + λ^2 I (6x6)
-  Eigen::Matrix<double, 6, 6> JJt = J_scaled * J_scaled.transpose();
-  Eigen::Matrix<double, 6, 6> A   = JJt + lam2 * Eigen::Matrix<double, 6, 6>::Identity();
+  Eigen::Matrix<double, 9, 9> JJt = J_scaled * J_scaled.transpose();
+  Eigen::Matrix<double, 9, 9> A   = JJt + lam2 * Eigen::Matrix<double, 9, 9>::Identity();
   auto solver = A.ldlt();
 
   // Solve in scaled coordinates: u' = J_scaled^T (A^{-1} v)
-  Eigen::VectorXd u_prime = J_scaled.transpose() * solver.solve(v);
+  Eigen::VectorXd u_prime = J_scaled.transpose() * solver.solve(vw);
 
   // Back to original coordinates: u = W^{-1} u'
   Eigen::VectorXd u = inv_w.asDiagonal() * u_prime;
@@ -565,7 +587,6 @@ WholeBodyResolvedRateController::update_and_write_commands(
     }
   }
 
-
   // double task_mag = qdot.norm();
 
   // task_mag = std::clamp(task_mag, 0.0, 1.0);
@@ -576,7 +597,7 @@ WholeBodyResolvedRateController::update_and_write_commands(
 
     // Nullspace projector in scaled coordinates:
     // N'_proj = I - J_scaled^T (J_scaled J_scaled^T + λ^2 I)^{-1} J_scaled
-    Eigen::MatrixXd Nproj_prime = Iwb - J_scaled.transpose() * solver.solve(J_scaled);
+    Eigen::MatrixXd Nproj_prime = Eigen::MatrixXd::Identity(M, M) - J_scaled.transpose() * solver.solve(J_scaled);
 
     // Posture command in original coordinates (joint-only)
     Eigen::VectorXd u_posture(M);
@@ -641,16 +662,16 @@ WholeBodyResolvedRateController::update_and_write_commands(
   }
 
 
-  // RCLCPP_INFO_THROTTLE(
-  //   get_node()->get_logger(), *get_node()->get_clock(), 1000,
-  //   "WB: sat_step = %zu / %zu", sat_step, N);
+    // RCLCPP_INFO_THROTTLE(
+    //   get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    //   "WB: sat_step = %zu / %zu", sat_step, N);
 
-  
-  // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-  //   "State q[0]=%.3f dq[0]=%.3f", q_kdl_(0), dq_kdl_(0));
+    
+    // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    //   "State q[0]=%.3f dq[0]=%.3f", q_kdl_(0), dq_kdl_(0));
 
-  // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-  //   "||v||=%.3f  rank<=6, lambda=%.3f", v.norm(), lambda_);
+    // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    //   "||v||=%.3f  rank<=6, lambda=%.3f", v.norm(), lambda_);
 
     // RCLCPP_INFO_THROTTLE(
     //     get_node()->get_logger(),
@@ -674,24 +695,24 @@ WholeBodyResolvedRateController::update_and_write_commands(
     base_cmd.twist.angular.x = 0.0;
     base_cmd.twist.angular.y = 0.0;
     base_cmd.twist.angular.z = k_base * v_base[2];
-    base_cmd_pub_->publish(base_cmd);
+    // base_cmd_pub_->publish(base_cmd);
 
-    // RCLCPP_INFO_THROTTLE(
-    //     get_node()->get_logger(), *get_node()->get_clock(), 1000,
-    //     "WB: v_base=(%.3f %.3f %.3f)  qdot=(%.3f %.3f %.3f %.3f %.3f %.3f)  r_be=(%.3f %.3f)",
-    //     v_base.x(), v_base.y(), v_base.z(),
-    //     qdot[0], qdot[1], qdot[2], qdot[3], qdot[4], qdot[5],
-    //     r_be.x(), r_be.y()
-    // );
+    RCLCPP_INFO_THROTTLE(
+        get_node()->get_logger(), *get_node()->get_clock(), 1000,
+        "WB: v_base=(%.3f %.3f %.3f)  qdot=(%.3f %.3f %.3f %.3f %.3f %.3f)  r_be=(%.3f %.3f)",
+        v_base.x(), v_base.y(), v_base.z(),
+        qdot[0], qdot[1], qdot[2], qdot[3], qdot[4], qdot[5],
+        r_be.x(), r_be.y()
+    );
 
     // v_ee contribution from arm joints
-    Eigen::Matrix<double, 6, 1> v_ee_arm = Je * qdot;
+    // Eigen::Matrix<double, 6, 1> v_ee_arm = Je * qdot;
 
-    // v_ee contribution from base
-    Eigen::Matrix<double, 6, 1> v_ee_base = Jb * v_base;
+    // // v_ee contribution from base
+    // Eigen::Matrix<double, 6, 1> v_ee_base = Jb * v_base;
 
     // total
-    Eigen::Matrix<double, 6, 1> v_ee_tot = v_ee_arm + v_ee_base;
+    // Eigen::Matrix<double, 6, 1> v_ee_tot = v_ee_arm + v_ee_base;
 
     // RCLCPP_INFO_THROTTLE(
     //     get_node()->get_logger(), *get_node()->get_clock(), 1000,
@@ -699,7 +720,7 @@ WholeBodyResolvedRateController::update_and_write_commands(
     //     v_ee_arm(0), v_ee_arm(1), v_ee_arm(2), v_ee_arm(3), v_ee_arm(4), v_ee_arm(5)
     // );
 
-    write_refs_to_slots();  
+    // write_refs_to_slots();  
     static double dt_min = 1e9;
     static double dt_max = 0.0;
     static double dt_sum = 0.0;
