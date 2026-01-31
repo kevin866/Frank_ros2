@@ -28,6 +28,11 @@ setup(
             'optitrack_tf_pub = ombot_coordination.optitrack_tf_pub:main',
             'goal_commander = ombot_coordination.goal_commander:main',
             'dual_traj_generator = ombot_coordination.dual_traj_generator:main',
+            'bell_curve_turn_publisher = ombot_coordination.bell_curve_turn_publisher:main',
+            'whole_body_cmd_publisher = ombot_coordination.whole_body_cmd_publisher:main',
+            'depth_move_away_cmd_publisher = ombot_coordination.depth_move_away_cmd_publisher:main',
+            'moveaway_goto_cmd = ombot_coordination.moveaway_goto_cmd:main',
+            'resolved_rate_tester = ombot_coordination.resolved_rate_tester:main',
         ],
     },
 )

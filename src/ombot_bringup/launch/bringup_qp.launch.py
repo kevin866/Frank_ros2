@@ -1,4 +1,4 @@
-# bringup_wb_with_bag.launch.py
+# bringup_qp.launch.py
 
 import math
 from launch import LaunchDescription
@@ -18,7 +18,6 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     bag_prefix   = LaunchConfiguration('bag_prefix',   default='ombot_run')
     storage      = LaunchConfiguration('storage',      default='sqlite3')
-    compress     = LaunchConfiguration('compress',     default='zstd')
     qos_path     = LaunchConfiguration(
         'qos_overrides',
         default='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'
@@ -84,8 +83,23 @@ def generate_launch_description():
             "world_frame": "world",
             "topic": "/goal_pose",
             "rate_hz": 5.0,
-            'goal': "0.8 1.0 0.5 0.0",
+            'goal': "1.2 1.0 0.5 0.0",
         }]
+    )
+
+    # ---------------- NEW: WholeBodyCmd publisher ----------------
+    # NOTE: Update package/executable to match where you put the node.
+    wb_cmd_publisher = Node(
+        package="ombot_coordination",          # <-- change if different
+        executable="whole_body_cmd_publisher", # <-- change to your node name
+        name="whole_body_cmd_publisher",
+        output="screen",
+        parameters=[{
+            "cmd_topic": "/wb_cmd",
+            "base_frame": "base_link",
+            "base_vx": 0.05,          # small forward velocity
+            "publish_rate": 50.0,
+        }],
     )
 
     # --- Controllers (spawn chain) ---
@@ -101,9 +115,9 @@ def generate_launch_description():
         output='screen'
     )
 
-    wb_rr = Node(
+    wb_qp = Node(
         package='controller_manager', executable='spawner',
-        arguments=['wb_resolved_rate_controller', '--activate', '-c', '/controller_manager'],
+        arguments=['wb_qp_controller', '--activate', '-c', '/controller_manager'],
         parameters=[ctrl_yaml],
         output='screen'
     )
@@ -114,78 +128,30 @@ def generate_launch_description():
         output='screen'
     )
 
-    # goal_from_offset = Node(
-    #     package='ombot_coordination',
-    #     executable='goal_from_base_offset_latched',
-    #     name='goal_from_base_offset_latched',
-    #     output='screen',
-    #     parameters=[{
-    #         'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
-    #         'goal_pose_topic': '/goal_pose',
-    #         'offset_xyz': [1.0, 0.0, 0.0],   # set your desired offset here (world frame)
-    #         'latch': True,                   # True = latch once, False = follow base
-    #     }]
-    # )
-
-
-    # Chain: JSB -> Impedance -> WholeBodyResolvedRate
+    # Chain: JSB -> Impedance -> WB QP
     chain_imp_after_jsb = RegisterEventHandler(
         OnProcessExit(target_action=jsb, on_exit=[imp])
     )
     chain_wb_after_imp = RegisterEventHandler(
-        OnProcessExit(target_action=imp, on_exit=[wb_rr])
+        OnProcessExit(target_action=imp, on_exit=[wb_qp])
     )
 
-    # --- Whole-body task commander (Python) ---
-    # This node just publishes desired EE twist in base_link frame
-    wb_task_commander = Node(
-        package="ombot_coordination",
-        executable="whole_body_task_commander",
-        name="whole_body_task_commander",
-        output="screen",
-        parameters=[{
-            # Frames for TF lookup
-            "world_frame": "world",
-            "base_frame": "base_link",
-
-            # Poses
-            # IMPORTANT: /ee_pose should be in base_link (FK output). If it's in world, you'll need to transform it too.
-            "ee_pose_topic":   "/ee_pose",
-            "goal_pose_topic": "/goal_pose",
-
-            # Optional trajectory refs (keep if you're using them)
-            "use_traj": True,
-            # (These are hardcoded in your code right now as /ee_desired_pose and /ee_desired_twist.
-            #  If you later parameterize them, add them here.)
-
-            # Twist out -> must match controller's "~ee_twist" topic expansion
-            "ee_twist_topic": "/wb_resolved_rate_controller/ee_twist",
-
-            # Gains
-            "kp_pos": 2.0,
-            "kp_rot": 0.0,   # consider 0.0 initially until frames are verified
-            "kd_pos": 0.2,
-            "kd_rot": 0.0,
-
-            # Velocity caps (real robot: start smaller)
-            "max_lin": 3.5,  # m/s (suggested safer start than 1.0)
-            "max_ang": 1.0,  # rad/s
-        }],
-    )
-
-
-    # Start commander only after wb_resolved_rate_controller is active
-    start_commander_after_wb = RegisterEventHandler(
-        OnProcessExit(target_action=wb_rr, on_exit=[wb_task_commander])
+    # Start cmd publisher only after wb_qp is active
+    start_cmd_pub_after_wb = RegisterEventHandler(
+        OnProcessExit(target_action=wb_qp, on_exit=[wb_cmd_publisher])
     )
 
     # --- rosbag2 recorder ---
     topics_to_record = [
-        '/mecanum_controller/reference',         # base ref (TwistStamped)
-        '/wb_resolved_rate_controller/ee_twist', # desired EE twist
+        '/mecanum_controller/reference',
+        '/wb_cmd',
         '/vrpn_mocap/RigidBody_1/pose',
         '/vrpn_mocap/RigidBody_2/pose',
         '/goal_pose',
+        '/base_goal_pose',
+        '/base_desired_twist',
+        '/ee_desired_pose',
+        '/ee_desired_twist',
         '/joint_states',
         '/ee_pose'
     ]
@@ -194,8 +160,6 @@ def generate_launch_description():
         'ros2', 'bag', 'record', *topics_to_record,
         '--output', LaunchConfiguration('bag_prefix'),
         '--storage', LaunchConfiguration('storage'),
-        '--compression-mode', 'file',
-        '--compression-format', LaunchConfiguration('compress'),
         '--max-bag-size', LaunchConfiguration('max_bag_size'),
         '--max-bag-duration', LaunchConfiguration('max_bag_secs'),
         '--qos-profile-overrides-path', LaunchConfiguration('qos_overrides')
@@ -203,9 +167,9 @@ def generate_launch_description():
 
     bag_record = ExecuteProcess(cmd=bag_cmd_final, output='screen')
 
-    # Start bag when whole-body controller is active (same time as commander)
+    # Start bag when whole-body controller is active
     start_bag_after_wb = RegisterEventHandler(
-        OnProcessExit(target_action=wb_rr, on_exit=[bag_record])
+        OnProcessExit(target_action=wb_qp, on_exit=[bag_record])
     )
 
     # Shutdown when ros2_control_node exits
@@ -221,7 +185,6 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time',  default_value='false'),
         DeclareLaunchArgument('bag_prefix',    default_value='ombot_run1'),
         DeclareLaunchArgument('storage',       default_value='sqlite3'),
-        DeclareLaunchArgument('compress',      default_value='zstd'),
         DeclareLaunchArgument(
             'qos_overrides',
             default_value='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'
@@ -234,7 +197,7 @@ def generate_launch_description():
         control_node,
 
         optitrack_tf,
-        goal_commander,
+        # goal_commander,
 
         # Controllers: mecanum can start anytime; chain the arm controllers
         mecanum_spawner,
@@ -242,10 +205,8 @@ def generate_launch_description():
         chain_imp_after_jsb,
         chain_wb_after_imp,
 
-        # goal_from_offset,
-
-        # Start commander + bag once WB controller is active
-        start_commander_after_wb,
+        # Start cmd publisher + bag once WB controller is active
+        start_cmd_pub_after_wb,
         start_bag_after_wb,
 
         end_when_control_exits,

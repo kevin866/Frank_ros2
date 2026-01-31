@@ -29,6 +29,8 @@
   <depend>kdl_parser</depend>
   <depend>ombot_msgs</depend>
   <depend>osqp_vendor</depend>
+  <depend>tf2_ros</depend>
+
 
   <!-- <depend>hardware_interface</depend> -->
 

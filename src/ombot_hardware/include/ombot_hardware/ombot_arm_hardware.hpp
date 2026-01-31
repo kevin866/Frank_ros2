@@ -12,7 +12,9 @@
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include <chrono>
 using hardware_interface::return_type;
+
 
 
 // ---- Conversion helpers ----
@@ -74,6 +76,7 @@ constexpr uint16_t ADDR_PRESENT_POSITION  = 580; // 4B, pulses
 constexpr uint16_t ADDR_HW_ERR = 518;   // P-series
 constexpr uint8_t  LEN_HW_ERR  = 1;
 
+std::chrono::steady_clock::time_point t_prev_;
 
 bool is_ready_{false};
 

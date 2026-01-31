@@ -1,30 +1,47 @@
-# bringup_wb_with_bag.launch.py
+# bringup_qp_moveaway_zed.launch.py
 
-import math
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument, ExecuteProcess,
-    RegisterEventHandler, Shutdown
+    RegisterEventHandler, Shutdown, IncludeLaunchDescription
 )
+from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command, FindExecutable
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+from launch_ros.substitutions import FindPackageShare
 from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
     # --- Common args ---
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
-    bag_prefix   = LaunchConfiguration('bag_prefix',   default='ombot_run')
+    bag_prefix   = LaunchConfiguration('bag_prefix',   default='ombot_run1')
     storage      = LaunchConfiguration('storage',      default='sqlite3')
-    compress     = LaunchConfiguration('compress',     default='zstd')
     qos_path     = LaunchConfiguration(
         'qos_overrides',
         default='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'
     )
     split_size   = LaunchConfiguration('max_bag_size', default=str(1024*1024*1024))  # 1 GiB
     split_secs   = LaunchConfiguration('max_bag_secs', default='600')                # 10 min
+
+    # ZED + moveaway args
+    launch_zed   = LaunchConfiguration('launch_zed', default='true')
+    depth_topic  = LaunchConfiguration('depth_topic', default='/zed/zed_node/depth/depth_registered')
+    cmd_topic    = LaunchConfiguration('cmd_topic',   default='/wb_cmd')
+
+    trigger_dist = LaunchConfiguration('trigger_dist', default='0.10')
+    clear_dist   = LaunchConfiguration('clear_dist',   default='0.30')
+    v_back       = LaunchConfiguration('v_back',       default='0.10')
+
+    publish_rate = LaunchConfiguration('publish_rate', default='50.0')
+    base_frame   = LaunchConfiguration('base_frame',   default='base_link')
+
+    # NOTE: keep roi fixed here to avoid DOUBLE_ARRAY typing issues from launch substitutions
+    roi = [0.40, 0.60, 0.55, 0.80]
 
     # --- Build robot_description from URDF/Xacro ---
     urdf_file = PathJoinSubstitution([
@@ -60,6 +77,22 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description_content}, ctrl_yaml],
     )
 
+    # --- ZED launch (your exact style) ---
+    zed_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            PathJoinSubstitution([FindPackageShare("zed_wrapper"), "launch", "zed_camera.launch.py"])
+        ]),
+        launch_arguments={
+            "camera_model": "zed2",
+            "camera_name": "zed",
+            "publish_tf": "false",
+            "publish_map_tf": "false",
+            "enable_depth": "true",
+            "enable_point_cloud": "true",
+        }.items(),
+        condition=IfCondition(launch_zed),
+    )
+
     optitrack_tf = Node(
         package="ombot_coordination",
         executable="optitrack_tf_pub",
@@ -84,8 +117,27 @@ def generate_launch_description():
             "world_frame": "world",
             "topic": "/goal_pose",
             "rate_hz": 5.0,
-            'goal': "0.8 1.0 0.5 0.0",
+            'goal': "1.2 1.0 0.5 0.0",
         }]
+    )
+
+    # ---------------- Moveaway CMD publisher ----------------
+    # This is your installed console_script: depth_move_away_cmd_publisher
+    depth_moveaway_cmd = Node(
+        package="ombot_coordination",
+        executable="depth_move_away_cmd_publisher",
+        name="depth_move_away_cmd_publisher",
+        output="screen",
+        parameters=[{
+            "cmd_topic": cmd_topic,
+            "base_frame": base_frame,
+            "depth_topic": depth_topic,
+            "publish_rate": publish_rate,
+            "trigger_dist": trigger_dist,
+            "clear_dist": clear_dist,
+            "v_back": v_back,
+            "roi": roi,
+        }],
     )
 
     # --- Controllers (spawn chain) ---
@@ -101,9 +153,9 @@ def generate_launch_description():
         output='screen'
     )
 
-    wb_rr = Node(
+    wb_qp = Node(
         package='controller_manager', executable='spawner',
-        arguments=['wb_resolved_rate_controller', '--activate', '-c', '/controller_manager'],
+        arguments=['wb_qp_controller', '--activate', '-c', '/controller_manager'],
         parameters=[ctrl_yaml],
         output='screen'
     )
@@ -114,98 +166,45 @@ def generate_launch_description():
         output='screen'
     )
 
-    # goal_from_offset = Node(
-    #     package='ombot_coordination',
-    #     executable='goal_from_base_offset_latched',
-    #     name='goal_from_base_offset_latched',
-    #     output='screen',
-    #     parameters=[{
-    #         'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
-    #         'goal_pose_topic': '/goal_pose',
-    #         'offset_xyz': [1.0, 0.0, 0.0],   # set your desired offset here (world frame)
-    #         'latch': True,                   # True = latch once, False = follow base
-    #     }]
-    # )
-
-
-    # Chain: JSB -> Impedance -> WholeBodyResolvedRate
+    # Chain: JSB -> Impedance -> WB QP
     chain_imp_after_jsb = RegisterEventHandler(
         OnProcessExit(target_action=jsb, on_exit=[imp])
     )
     chain_wb_after_imp = RegisterEventHandler(
-        OnProcessExit(target_action=imp, on_exit=[wb_rr])
+        OnProcessExit(target_action=imp, on_exit=[wb_qp])
     )
 
-    # --- Whole-body task commander (Python) ---
-    # This node just publishes desired EE twist in base_link frame
-    wb_task_commander = Node(
-        package="ombot_coordination",
-        executable="whole_body_task_commander",
-        name="whole_body_task_commander",
-        output="screen",
-        parameters=[{
-            # Frames for TF lookup
-            "world_frame": "world",
-            "base_frame": "base_link",
-
-            # Poses
-            # IMPORTANT: /ee_pose should be in base_link (FK output). If it's in world, you'll need to transform it too.
-            "ee_pose_topic":   "/ee_pose",
-            "goal_pose_topic": "/goal_pose",
-
-            # Optional trajectory refs (keep if you're using them)
-            "use_traj": True,
-            # (These are hardcoded in your code right now as /ee_desired_pose and /ee_desired_twist.
-            #  If you later parameterize them, add them here.)
-
-            # Twist out -> must match controller's "~ee_twist" topic expansion
-            "ee_twist_topic": "/wb_resolved_rate_controller/ee_twist",
-
-            # Gains
-            "kp_pos": 2.0,
-            "kp_rot": 0.0,   # consider 0.0 initially until frames are verified
-            "kd_pos": 0.2,
-            "kd_rot": 0.0,
-
-            # Velocity caps (real robot: start smaller)
-            "max_lin": 3.5,  # m/s (suggested safer start than 1.0)
-            "max_ang": 1.0,  # rad/s
-        }],
-    )
-
-
-    # Start commander only after wb_resolved_rate_controller is active
-    start_commander_after_wb = RegisterEventHandler(
-        OnProcessExit(target_action=wb_rr, on_exit=[wb_task_commander])
+    # Start moveaway cmd publisher only after wb_qp is active
+    start_moveaway_after_wb = RegisterEventHandler(
+        OnProcessExit(target_action=wb_qp, on_exit=[depth_moveaway_cmd])
     )
 
     # --- rosbag2 recorder ---
     topics_to_record = [
-        '/mecanum_controller/reference',         # base ref (TwistStamped)
-        '/wb_resolved_rate_controller/ee_twist', # desired EE twist
-        '/vrpn_mocap/RigidBody_1/pose',
-        '/vrpn_mocap/RigidBody_2/pose',
-        '/goal_pose',
+        '/mecanum_controller/reference',
+        '/wb_cmd',
         '/joint_states',
-        '/ee_pose'
+        '/ee_pose',
+        '/vrpn_mocap/RigidBody_1/pose',
+
+        # Depth topics for debugging/demo
+        '/zed/zed_node/depth/depth_registered',
     ]
 
     bag_cmd_final = [
         'ros2', 'bag', 'record', *topics_to_record,
-        '--output', LaunchConfiguration('bag_prefix'),
-        '--storage', LaunchConfiguration('storage'),
-        '--compression-mode', 'file',
-        '--compression-format', LaunchConfiguration('compress'),
-        '--max-bag-size', LaunchConfiguration('max_bag_size'),
-        '--max-bag-duration', LaunchConfiguration('max_bag_secs'),
-        '--qos-profile-overrides-path', LaunchConfiguration('qos_overrides')
+        '--output', bag_prefix,
+        '--storage', storage,
+        '--max-bag-size', split_size,
+        '--max-bag-duration', split_secs,
+        '--qos-profile-overrides-path', qos_path
     ]
 
     bag_record = ExecuteProcess(cmd=bag_cmd_final, output='screen')
 
-    # Start bag when whole-body controller is active (same time as commander)
+    # Start bag when whole-body controller is active
     start_bag_after_wb = RegisterEventHandler(
-        OnProcessExit(target_action=wb_rr, on_exit=[bag_record])
+        OnProcessExit(target_action=wb_qp, on_exit=[bag_record])
     )
 
     # Shutdown when ros2_control_node exits
@@ -221,7 +220,6 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time',  default_value='false'),
         DeclareLaunchArgument('bag_prefix',    default_value='ombot_run1'),
         DeclareLaunchArgument('storage',       default_value='sqlite3'),
-        DeclareLaunchArgument('compress',      default_value='zstd'),
         DeclareLaunchArgument(
             'qos_overrides',
             default_value='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'
@@ -229,23 +227,34 @@ def generate_launch_description():
         DeclareLaunchArgument('max_bag_size',  default_value=str(1024*1024*1024)),
         DeclareLaunchArgument('max_bag_secs',  default_value='600'),
 
+        DeclareLaunchArgument('launch_zed',    default_value='true'),
+        DeclareLaunchArgument('depth_topic',   default_value='/zed/zed_node/depth/depth_registered'),
+        DeclareLaunchArgument('cmd_topic',     default_value='/wb_cmd'),
+        DeclareLaunchArgument('publish_rate',  default_value='50.0'),
+        DeclareLaunchArgument('base_frame',    default_value='base_link'),
+        DeclareLaunchArgument('trigger_dist',  default_value='0.40'),
+        DeclareLaunchArgument('clear_dist',    default_value='0.60'),
+        DeclareLaunchArgument('v_back',        default_value='0.1'),
+
         # Core nodes
         robot_state_publisher,
         control_node,
-
         optitrack_tf,
-        goal_commander,
+        # goal_commander,
 
-        # Controllers: mecanum can start anytime; chain the arm controllers
+
+        # Camera
+        zed_launch,
+
+
+        # Controllers
         mecanum_spawner,
         jsb,
         chain_imp_after_jsb,
         chain_wb_after_imp,
 
-        # goal_from_offset,
-
-        # Start commander + bag once WB controller is active
-        start_commander_after_wb,
+        # Moveaway + bag after WB QP
+        start_moveaway_after_wb,
         start_bag_after_wb,
 
         end_when_control_exits,

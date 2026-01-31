@@ -590,45 +590,6 @@ WholeBodyResolvedRateController::update_and_write_commands(
   // double task_mag = qdot.norm();
 
   // task_mag = std::clamp(task_mag, 0.0, 1.0);
-
-  // 6) Nullspace posture bias: u_final = u_task + N'_proj * u_posture' (in scaled coords)
-  if (posture_active) {
-    Eigen::MatrixXd Iwb = Eigen::MatrixXd::Identity(M, M);
-
-    // Nullspace projector in scaled coordinates:
-    // N'_proj = I - J_scaled^T (J_scaled J_scaled^T + λ^2 I)^{-1} J_scaled
-    Eigen::MatrixXd Nproj_prime = Eigen::MatrixXd::Identity(M, M) - J_scaled.transpose() * solver.solve(J_scaled);
-
-    // Posture command in original coordinates (joint-only)
-    Eigen::VectorXd u_posture(M);
-    u_posture.setZero();
-
-    for (size_t i = 0; i < N; ++i) {
-      double e  = q_home_[i] - q_kdl_(i);
-      double ed = -dq_kdl_(i);
-      double ui = null_kp_[i] * e + null_kd_[i] * ed;
-
-      // ui *= null_scale_adapt;  // adaptive scaling vs task magnitude
-      ui = std::clamp(ui, -qdot_limit_, qdot_limit_);
-
-      // posture only on joints; base elements remain 0
-      u_posture(3 + static_cast<int>(i)) = ui;
-    }
-
-    // Convert posture command to scaled coordinates: u_posture' = W * u_posture
-    Eigen::VectorXd u_posture_prime = w.asDiagonal() * u_posture;
-
-    // Add projected nullspace motion in scaled coords
-    u_prime = u_prime + Nproj_prime * u_posture_prime;
-
-    // Back to original coordinates
-    u = inv_w.asDiagonal() * u_prime;
-
-    // Re-split base / joints
-    v_base = u.head<3>();
-    qdot   = u.tail(N);
-  }
-
   size_t sat_step = 0;
 
   for (size_t i = 0; i < N; ++i) {
@@ -690,7 +651,7 @@ WholeBodyResolvedRateController::update_and_write_commands(
     base_cmd.header.stamp = now;
     base_cmd.header.frame_id = base_link_;  // e.g. "base_link"
     base_cmd.twist.linear.x  = -k_base * v_base[0];
-    base_cmd.twist.linear.y  = -k_base * v_base[1];
+    base_cmd.twist.linear.y  = k_base * v_base[1];
     base_cmd.twist.linear.z  = 0.0;
     base_cmd.twist.angular.x = 0.0;
     base_cmd.twist.angular.y = 0.0;

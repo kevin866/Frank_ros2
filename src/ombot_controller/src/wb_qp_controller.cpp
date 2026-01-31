@@ -34,6 +34,24 @@ controller_interface::CallbackReturn WholeBodyQPController::on_init()
     auto_declare<double>("cbf_margin", 0.03);
     auto_declare<double>("cbf_activate_h", 0.30);
 
+    // Position gains
+    auto_declare<double>("ee.kp_pos", 0.0);
+    auto_declare<double>("ee.kd_pos", 0.0);
+
+    // Rotation gains
+    auto_declare<double>("ee.kp_rot", 0.0);
+    auto_declare<double>("ee.kd_rot", 0.0);
+
+    ee_kp_pos_ = get_node()->get_parameter("ee.kp_pos").as_double();
+    ee_kd_pos_ = get_node()->get_parameter("ee.kd_pos").as_double();
+    ee_kp_rot_ = get_node()->get_parameter("ee.kp_rot").as_double();
+    ee_kd_rot_ = get_node()->get_parameter("ee.kd_rot").as_double();
+
+    RCLCPP_INFO(
+      get_node()->get_logger(),
+      "EE gains: kp_pos=%.3f kd_pos=%.3f kp_rot=%.3f kd_rot=%.3f",
+      ee_kp_pos_, ee_kd_pos_, ee_kp_rot_, ee_kd_rot_);
+
 
     // limits
     auto_declare<double>("qdot_limit", 1.0);
@@ -206,6 +224,51 @@ WholeBodyQPController::on_configure(const rclcpp_lifecycle::State&)
   // refs
   q_ref_.assign(N, 0.0);
   qdot_ref_.assign(N, 0.0);
+
+
+
+  tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_node()->get_clock());
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+  // Initialize cache to identity so RT always has something
+  T_wb_rt_.writeFromNonRT(Eigen::Isometry3d::Identity());
+
+  // Timer to refresh TF in non-RT
+  tf_timer_ = get_node()->create_wall_timer(
+    std::chrono::milliseconds(20),  // 50 Hz
+    [this]()
+    {
+      try {
+        // world <- base
+        auto tf = tf_buffer_->lookupTransform(
+          world_frame_, base_frame_, tf2::TimePointZero);
+
+        Eigen::Quaterniond q(
+          tf.transform.rotation.w,
+          tf.transform.rotation.x,
+          tf.transform.rotation.y,
+          tf.transform.rotation.z);
+
+        Eigen::Vector3d t(
+          tf.transform.translation.x,
+          tf.transform.translation.y,
+          tf.transform.translation.z);
+
+        Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
+        T.linear() = q.normalized().toRotationMatrix();
+        T.translation() = t;
+
+        T_wb_rt_.writeFromNonRT(T);
+      }
+      catch (const tf2::TransformException & e) {
+        // Non-RT: OK to warn occasionally
+        RCLCPP_WARN_THROTTLE(
+          get_node()->get_logger(), *get_node()->get_clock(), 2000,
+          "TF lookupTransform %s<- %s failed: %s",
+          world_frame_.c_str(), base_frame_.c_str(), e.what());
+      }
+    });
+
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -431,6 +494,8 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
   const double dt = period.seconds();
   const double dt_used = std::max(1e-4, std::min(dt, dt_ceiling_));
   const auto now = get_node()->now();
+  // auto t0 = std::chrono::steady_clock::now();
+
 
 
   // Pull latest obstacle snapshot into RT cache
@@ -452,13 +517,13 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
     }
   }
 
-  RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-    "Obstacles: ok=%d count=%zu frame='%s' age=%.3fs",
-    obstacles_ok ? 1 : 0,
-    obstacles_cached_.obs.size(),
-    obstacles_cached_.frame_id.c_str(),
-    obstacles_cached_.valid ? (now - obstacles_cached_.stamp).seconds() : 999.0
-    );
+  // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+  //   "Obstacles: ok=%d count=%zu frame='%s' age=%.3fs",
+  //   obstacles_ok ? 1 : 0,
+  //   obstacles_cached_.obs.size(),
+  //   obstacles_cached_.frame_id.c_str(),
+  //   obstacles_cached_.valid ? (now - obstacles_cached_.stamp).seconds() : 999.0
+  //   );
 
 
   // --- cmd cache / timeout ---
@@ -479,6 +544,7 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
 
   // --- if no task cmd: hold (simple) ---
   if (!cmd_cached_.valid) {
+    ee_ref_init_ = false;
     for (size_t i = 0; i < N; ++i) {
       qdot_ref_[i] = 0.0;
       q_ref_[i]    = q_kdl_(i);
@@ -515,64 +581,236 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
 
   const int M = static_cast<int>(3 + N);
 
-  // -----------------------------
-  // Build soft-objective QP
-  // Minimize:
-  //   ||Wt (J x - v)||^2 + posture_weight*||Sq x - qdot_post||^2 + lambda^2||Wu x||^2
-  // subject to box constraints (bounds)
-  //
-  // This is a "QP-shaped" solve we implement via KKT (no OSQP yet):
-  //   x* = argmin 0.5 x^T P x + q^T x  (unconstrained)
-  // then project to bounds.
-  // -----------------------------
 
-  // x = [base; joints]
-  // Task Jacobian J (9xM): [I 0; Jb Je]
-  Eigen::MatrixXd Jtask(9, M);
+  // x = [base; joints], M = 3 + N
+  Eigen::MatrixXd Jtask(6, M);
   Jtask.setZero();
-  Jtask.block<3,3>(0,0).setIdentity();
-  Jtask.block<6,3>(3,0) = Jb;
-  Jtask.block(3,3,6,(int)N) = Je;
+  Jtask.block<6,3>(0,0) = Jb;
+  Jtask.block(0,3,6,(int)N) = Je;
+  // Read cached world<-base transform (RT-safe)
+  Eigen::Isometry3d T_wb = *T_wb_rt_.readFromRT();
 
-  // v (9): [base_des; ee_des]
-  Eigen::VectorXd v(9);
-  v.setZero();
-  v(0) = cmd_cached_.bvx;
-  v(1) = cmd_cached_.bvy;
-  v(2) = cmd_cached_.bwz;
-  v.segment<6>(3) << cmd_cached_.vx, cmd_cached_.vy, cmd_cached_.vz,
-                      cmd_cached_.wx, cmd_cached_.wy, cmd_cached_.wz;
+  // ---- feedforward EE twist command (base_link frame) ----
+  Eigen::Vector3d vff_lin(cmd_cached_.vx, cmd_cached_.vy, cmd_cached_.vz);
+  Eigen::Vector3d vff_ang(cmd_cached_.wx, cmd_cached_.wy, cmd_cached_.wz);
+
+  // world <- base rotation
+  Eigen::Matrix3d R_wb = T_wb.linear();
+
+  // convert commanded vel into world before integrating world position reference
+  vff_lin = R_wb * vff_lin;
+  vff_ang = R_wb * vff_ang;
+  // Current EE pose (in base_link)
+  const KDL::Vector p_cur = tip_frame_.p;
+  const KDL::Rotation R_cur = tip_frame_.M;
+
+
+
+
+  // p_cur_base from KDL
+  Eigen::Vector3d p_cur_base(p_cur.x(), p_cur.y(), p_cur.z());
+
+  // Convert to world
+  Eigen::Vector3d p_cur_world = T_wb.linear() * p_cur_base + T_wb.translation();
+
+  // Initialize reference the first time (or after invalid cmd)
+  if (!ee_ref_init_) {
+    p_ref_ = p_cur_world;
+    R_ref_ = R_cur;
+    ee_ref_init_ = true;
+  }
+
+  // ---- integrate the reference forward using feedforward velocity ----
+  p_ref_.x() += vff_lin.x() * dt_used;
+  p_ref_.y() += vff_lin.y() * dt_used;
+  p_ref_.z() += vff_lin.z() * dt_used;
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(), *get_node()->get_clock(), 500,
+  //   "EE REF p_ref_world=(%.3f %.3f %.3f)",
+  //   p_ref_.x(), p_ref_.y(), p_ref_.z()
+  // );
+
+  // Now perr in world (assuming p_ref_ is world)
+  Eigen::Vector3d p_ref_world(p_ref_.x(), p_ref_.y(), p_ref_.z());
+  Eigen::Vector3d p_err_world = p_ref_world - p_cur_world;
+
+  // base <- world rotation is transpose if R_wb is orthonormal
+  Eigen::Vector3d p_err = R_wb.transpose() * p_err_world;
 
   RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 500,
-                        "CMD v = [ base:(%.3f %.3f %.3f) | ee_lin:(%.3f %.3f %.3f) ee_ang:(%.3f %.3f %.3f) ]",
-                        v(0), v(1), v(2),
-                        v(3), v(4), v(5),
-                        v(6), v(7), v(8)
+                        "perr=(%.3f %.3f %.3f)",
+                        p_err.x(), p_err.y(), p_err.z()
+                      );
+
+  RCLCPP_INFO_THROTTLE(
+    get_node()->get_logger(), *get_node()->get_clock(), 500,
+    "EE ACT p_cur_world=(%.3f %.3f %.3f)",
+    p_cur_world.x(), p_cur_world.y(), p_cur_world.z()
+  );
+
+
+
+
+  // rotation reference integrate: R_ref <- Exp(w*dt) * R_ref
+  const double wx = vff_ang.x(), wy = vff_ang.y(), wz = vff_ang.z();
+  const double wnorm = std::sqrt(wx*wx + wy*wy + wz*wz);
+  if (wnorm > 1e-9) {
+    const double ang = wnorm * dt_used;
+    const double ax = wx / wnorm, ay = wy / wnorm, az = wz / wnorm;
+    KDL::Rotation dR = KDL::Rotation::Rot(KDL::Vector(ax, ay, az), ang);
+    R_ref_ = dR * R_ref_;
+  }
+
+  // double roll_ref, pitch_ref, yaw_ref;
+  // R_ref_.GetRPY(roll_ref, pitch_ref, yaw_ref);
+
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(), *get_node()->get_clock(), 500,
+  //   "EE R_ref RPY = (%.3f, %.3f, %.3f)",
+  //   roll_ref, pitch_ref, yaw_ref
+  // );
+
+  // Optional anti-windup: leak reference slowly toward current pose
+  if (ee_ref_leak_ > 0.0) {
+    const double a = std::clamp(ee_ref_leak_ * dt_used, 0.0, 1.0);
+    p_ref_ = p_ref_ * (1.0 - a) + p_cur_world * a;
+    // (Rotation leak can be added later; position leak alone helps a lot.)
+  }
+
+  // ---- compute pose error ----
+  // KDL::Vector p_err = p_cur - p_ref_;
+
+  // clamp position error magnitude (prevents runaway)
+  const double perr_norm = std::sqrt(p_err.x()*p_err.x() + p_err.y()*p_err.y() + p_err.z()*p_err.z());
+  if (perr_norm > ee_err_max_) {
+    const double s = ee_err_max_ / (perr_norm + 1e-9);
+    p_err = p_err * s;
+  }
+
+
+  if (perr_norm < ee_err_deadband_) {
+    p_err.setZero();
+  } else if (perr_norm > ee_err_max_) {
+    const double s = ee_err_max_ / (perr_norm + 1e-9);
+    p_err *= s;
+  }
+
+
+  // orientation error: R_err = R_ref * R_cur^{-1}
+  // R_err = R_ref_ * R_cur.Inverse();
+
+  KDL::Rotation R_err = R_ref_ * R_cur.Inverse(); 
+
+  // angle from trace
+  double tr = R_err(0,0) + R_err(1,1) + R_err(2,2);
+  double c = std::max(-1.0, std::min(1.0, 0.5*(tr - 1.0)));
+  double angle = std::acos(c);
+
+  // axis from skew
+  Eigen::Vector3d axis;
+  axis << (R_err(2,1) - R_err(1,2)),
+          (R_err(0,2) - R_err(2,0)),
+          (R_err(1,0) - R_err(0,1));
+  axis *= 0.5;
+
+  double s = axis.norm();
+  if (s > 1e-9) axis /= s;
+  else axis.setZero();
+
+  // rotation vector
+  Eigen::Vector3d rotvec = angle * axis;
+  if (rotvec.norm() < ee_rot_deadband_) rotvec.setZero();
+  Eigen::Vector3d vcorr_ang_p = ee_kp_rot_ * rotvec;
+
+
+
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(),
+  //   *get_node()->get_clock(),
+  //   500,
+  //   "ROTERR(trace): angle=%.6f axis=(%.3f %.3f %.3f) rotvec=(%.3f %.3f %.3f)",
+  //   angle, axis.x(), axis.y(), axis.z(), rotvec.x(), rotvec.y(), rotvec.z()
+  // );
+
+
+ 
+  Eigen::VectorXd dq_eig(N);
+  for (size_t i=0;i<N;++i) dq_eig((int)i) = dq_kdl_(i);
+
+  // approximate EE twist from joints only (good enough to damp)
+  Eigen::Matrix<double,6,1> vee_j = Je * dq_eig;
+
+
+  // ---- feedback correction twist ----
+  Eigen::Vector3d vcorr_lin_p(ee_kp_pos_ * p_err.x(),
+                            ee_kp_pos_ * p_err.y(),
+                            ee_kp_pos_ * p_err.z());
+
+  // Eigen::Vector3d vcorr_ang_p(ee_kp_rot_ * axis.x() * angle,
+                            // ee_kp_rot_ * axis.y() * angle,
+                            // ee_kp_rot_ * axis.z() * angle);
+
+
+  // D term (damp measured EE motion)
+  Eigen::Vector3d vcorr_lin = vcorr_lin_p - ee_kd_pos_ * vee_j.head<3>();
+  Eigen::Vector3d vcorr_ang = vcorr_ang_p - ee_kd_rot_ * vee_j.tail<3>();
+
+
+  // ---- corrected desired EE twist ----
+  Eigen::Vector3d vdes_lin = vff_lin + vcorr_lin;
+  Eigen::Vector3d vdes_ang = vff_ang + vcorr_ang;
+
+  // clamp final desired twist (safety)
+  const double vlin = vdes_lin.norm();
+  if (vlin > ee_vmax_lin_) vdes_lin *= (ee_vmax_lin_ / (vlin + 1e-9));
+  const double vang = vdes_ang.norm();
+  if (vang > ee_vmax_ang_) vdes_ang *= (ee_vmax_ang_ / (vang + 1e-9));
+
+  // v (6): ee_des only (the thing fed into QP)
+  Eigen::VectorXd v(6);
+  v << vdes_lin.x(), vdes_lin.y(), vdes_lin.z(),
+      vdes_ang.x(), vdes_ang.y(), vdes_ang.z();
+
+  // v (6): ee_des only
+  // Eigen::VectorXd v(6);
+  // v << cmd_cached_.vx, cmd_cached_.vy, cmd_cached_.vz,
+  //     cmd_cached_.wx, cmd_cached_.wy, cmd_cached_.wz;
+
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(), *get_node()->get_clock(), 500,
+  //   "EE ERR perr=(%.3f %.3f %.3f)",
+  //   p_ref_.x() - p_cur_world.x(),
+  //   p_ref_.y() - p_cur_world.y(),
+  //   p_ref_.z() - p_cur_world.z()
+  // );
+
+
+  // Base preferred velocity from navigation / trajectory generator
+  Eigen::Vector3d vb_ref(
+    cmd_cached_.bvx,
+    cmd_cached_.bvy,
+    cmd_cached_.bwz
+  );
+
+  RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 500,
+                        "EE vff=(%.3f %.3f %.3f | %.3f %.3f %.3f)  vdes=(%.3f %.3f %.3f | %.3f %.3f %.3f)  perr=(%.3f %.3f %.3f)",
+                        vff_lin.x(), vff_lin.y(), vff_lin.z(), vff_ang.x(), vff_ang.y(), vff_ang.z(),
+                        v(0), v(1), v(2), v(3), v(4), v(5),
+                        p_err.x(), p_err.y(), p_err.z()
                       );
 
 
-  // Weight rows (Wt): base task vs ee task
-  Eigen::VectorXd wrow(9);
-  wrow.segment<3>(0).setConstant(std::max(0.0, base_weight_));
-  wrow.segment<6>(3).setConstant(std::max(0.0, arm_weight_));
 
-  // Optional axis weights inside EE rows
-  // position rows 3..5: x,y,z  (we scale z separately with w_z_)
-  wrow(3) *= w_pos_;
-  wrow(4) *= w_pos_;
-  wrow(5) *= (w_pos_ * w_z_);
-  // rotation rows 6..8
-  wrow(6) *= w_rot_;
-  wrow(7) *= w_rot_;
-  wrow(8) *= w_rot_;
+  Eigen::VectorXd wrow(6);
+  wrow.setConstant(1.0);   // you said ignore weights; keep 1.0 everywhere
 
-  // Apply row weights by scaling Jtask rows and v
   Eigen::MatrixXd Jw = Jtask;
   Eigen::VectorXd vw = v;
-  for (int r = 0; r < 9; ++r) {
+  for (int r = 0; r < 6; ++r) {
     Jw.row(r) *= wrow(r);
     vw(r)     *= wrow(r);
   }
+
 
   // DOF effort weights Wu (diagonal)
   Eigen::VectorXd wu(M);
@@ -599,6 +837,15 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
 
   P.noalias() += 2.0 * (Jw.transpose() * Jw);
   q.noalias() += -2.0 * (Jw.transpose() * vw);
+
+  // Base preference: || v_base - vb_ref ||^2  (soft)
+  const double alpha_qp = 1.0;   // "how strongly to follow base cmd"; start with 1.0
+
+  Eigen::MatrixXd Sb = Eigen::MatrixXd::Zero(3, M);
+  Sb.block<3,3>(0,0).setIdentity();   // selects base part of x
+
+  P.noalias() += 2.0 * alpha_qp * (Sb.transpose() * Sb);
+  q.noalias() += -2.0 * alpha_qp * (Sb.transpose() * vb_ref);
 
   // regularization on all DOFs
   const double lam2 = lambda_ * lambda_;
@@ -660,8 +907,6 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
     }
   }
 
-  
-
   // // Solve unconstrained
   // // minimize 0.5 x^T P x + q^T x  -> P x = -q
   // Eigen::VectorXd x = P.ldlt().solve(-q);
@@ -685,23 +930,6 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
     umin(3+(int)i) = lo;
     umax(3+(int)i) = hi;
   }
-
-  // // Project to bounds (box constraints)
-  // x = x.cwiseMin(umax).cwiseMax(umin);
-
-  // // ---- HACK: one-pass projection to satisfy CBF halfspaces ----
-  // for (const auto& row : cbf_rows) {
-  // const double ax = row.a.dot(x);
-  // if (ax >= row.b) continue;
-
-  // // move x in direction of a to satisfy constraint with minimal change (Euclidean)
-  // const double denom = row.a.squaredNorm() + 1e-9;
-  // const double delta = (row.b - ax) / denom;
-  // x += row.a.transpose() * delta;
-
-  // // keep within box after each projection
-  // x = x.cwiseMin(umax).cwiseMax(umin);
-  // }
 
   // Fill q
   q_osqp_ = q;
@@ -805,31 +1033,45 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
     RCLCPP_WARN_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
                     "OSQP solve failed (keeping safe hold)");
   }
-  RCLCPP_INFO_THROTTLE(
-    get_node()->get_logger(), *get_node()->get_clock(), 500,
-    "QP SOL x = [ vb=(%.3f %.3f %.3f) | qdot_norm=%.4f ]",
-    x(0), x(1), x(2),
-    x.tail((int)N).norm()
-  );
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(), *get_node()->get_clock(), 500,
+  //   "QP SOL x = [ vb=(%.3f %.3f %.3f) | qdot_norm=%.4f ]",
+  //   x(0), x(1), x(2),
+  //   x.tail((int)N).norm()
+  // );
 
   // -----------------------------
   // Task tracking error (DEBUG)
   // -----------------------------
-  Eigen::VectorXd task_err = Jtask * x - v;
+  // Eigen::VectorXd task_err = Jtask * x - v;
 
-  double base_err = task_err.segment<3>(0).norm();
-  double ee_err   = task_err.segment<6>(3).norm();
+  // double base_err = task_err.segment<3>(0).norm();
+  // double ee_err   = task_err.segment<6>(3).norm();
 
-  RCLCPP_INFO_THROTTLE(
-    get_node()->get_logger(), *get_node()->get_clock(), 500,
-    "QP ERR base=%.4f ee=%.4f | ||x||=%.4f",
-    base_err, ee_err, x.norm()
-  );
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(), *get_node()->get_clock(), 500,
+  //   "QP ERR base=%.4f ee=%.4f | ||x||=%.4f",
+  //   base_err, ee_err, x.norm()
+  // );
 
 
   // Split results
   Eigen::Vector3d v_base = x.head<3>();
   Eigen::VectorXd qdot   = x.tail((int)N);
+
+  Eigen::VectorXd qdot_exec = qdot;  // what you'll really execute
+  // for (size_t i = 0; i < N; ++i) {
+  //   double dq = qdot(i)*dt_used;
+  //   dq = std::clamp(dq, -step_limit_, step_limit_);
+  //   qdot_exec(i) = dq / dt_used;
+  // }
+  // Eigen::Matrix<double,6,1> vee_res = Jb * v_base + Je * qdot_exec;
+  Eigen::Matrix<double,6,1> vee_res = Je * qdot;
+
+  RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 500, "vee_res=(%.3f %.3f %.3f | %.3f %.3f %.3f)",
+    vee_res(0),vee_res(1),vee_res(2),vee_res(3),vee_res(4),vee_res(5));
+
+
 
   // Integrate joint refs (your downstream controller expects pos+vel)
   for (size_t i=0;i<N;++i) {
@@ -849,15 +1091,15 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
   base_cmd.twist.angular.z =  base_cmd_scale_ * v_base[2];
   base_cmd_pub_->publish(base_cmd);
 
-  RCLCPP_INFO_THROTTLE(
-    get_node()->get_logger(), *get_node()->get_clock(), 1000,
-    "QP: v_base=(%.3f %.3f %.3f) qdot_norm=%.3f r_be=(%.3f %.3f %.3f) posture=%d",
-    v_base.x(), v_base.y(), v_base.z(),
-    qdot.norm(),
-    r_be.x(), r_be.y(), r_be.z(),
-    posture_active ? 1 : 0
-  );
-
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(), *get_node()->get_clock(), 1000,
+  //   "QP: v_base=(%.3f %.3f %.3f) qdot_norm=%.3f r_be=(%.3f %.3f %.3f) posture=%d",
+  //   v_base.x(), v_base.y(), v_base.z(),
+  //   qdot.norm(),
+  //   r_be.x(), r_be.y(), r_be.z(),
+  //   posture_active ? 1 : 0
+  // );
+  // command to arm joints
   write_refs_to_slots();
   return controller_interface::return_type::OK;
 }

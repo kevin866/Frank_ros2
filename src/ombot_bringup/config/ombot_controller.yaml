@@ -130,8 +130,8 @@ mecanum_controller:
     front_right_wheel_command_joint_name: front_right_wheel_joint
     rear_left_wheel_command_joint_name:   rear_left_wheel_joint
     rear_right_wheel_command_joint_name:  rear_right_wheel_joint
-    wheel_separation_x: 0.40
-    wheel_separation_y: 0.30
+    wheel_separation_x: 0.20
+    wheel_separation_y: 0.15
     base_frame_id: base_link
     odom_frame_id: odom
     enable_odom_tf: true
@@ -143,8 +143,11 @@ mecanum_controller:
     use_stamped_vel: true
     cmd_vel_topic: cmd_vel     
 
+    # kinematics:
+    #   wheels_radius: 0.069
     kinematics:
-      wheels_radius: 0.069
+      wheels_radius: 0.00268
+
       # sum_of_robot_center_projection_on_X_Y_axis = Lx + Ly
       sum_of_robot_center_projection_on_X_Y_axis: 0.37
 
@@ -202,23 +205,25 @@ wb_qp_controller:
     base_vx_limit: 2.5
     base_vy_limit: 2.5
     base_wz_limit: 0.30
-    base_cmd_scale: 5.0
+    base_cmd_scale: 1.0
 
     # weights
     lambda: 0.05
     base_weight: 1.0
-    arm_weight: 1.0
-    base_task_weight: 0.15
-    ee_task_weight: 1.0
-    posture_weight: 0.08
+    arm_weight: 0.0
+    base_task_weight: 1.0
+    ee_task_weight: 0.0
+    posture_weight: 0.0
     w_pos: 1.0
-    w_rot: 0.4
-    # w_z: 0.7
+    w_rot: 20.0
+    w_z: 20.0
     # null_kp: [0.4, 0.4, 0.4, 0.25, 0.25, 0.15]
     # null_kd: [0.05, 0.05, 0.05, 0.03, 0.03, 0.02]
-    null_kp: [0.0, 0.0, 0.4, 0.25, 0.25, 0.15]
-    null_kd: [0.05, 0.05, 0.05, 0.03, 0.03, 0.02]
-    q_home:  [0.0, -0.6, 1.2, 0.0, 0.8, 0.0]
+    null_kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    null_kd: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    # q_home:  [0.0, -0.6, 1.2, 0.0, 0.8, 0.0]
+    q_home:  [0.0, -0.66, 0.4, 0.0, 0.00, 0.0]
+
 
     # joint bounds (optional but recommended)
     q_min: [-3.14, -2.5, -2.5, -3.14, -2.5, -3.14]
@@ -233,3 +238,8 @@ wb_qp_controller:
     cbf_margin: 0.03
     cbf_activate_h: 0.00
 
+    ee:
+      kp_pos: 0.0
+      kd_pos: 0.0
+      kp_rot: 0.0
+      kd_rot: 0.0

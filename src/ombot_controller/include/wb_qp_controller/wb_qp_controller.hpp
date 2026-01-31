@@ -36,6 +36,14 @@
 #include <vector>
 #include <stdexcept>
 
+#include <tf2_ros/buffer.hpp>
+#include <tf2_ros/transform_listener.hpp>
+#include <Eigen/Geometry>
+#include <chrono>
+
+
+
+
 namespace ombot_controller {
 
 class WholeBodyQPController : public controller_interface::ChainableControllerInterface
@@ -104,6 +112,16 @@ private:
   void obstaclesCb(const ombot_msgs::msg::ObstacleArray::SharedPtr msg);
 
 
+  std::string world_frame_{"world"};     // or "world"
+  std::string base_frame_{"base_link"}; // your base link
+
+  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+
+  // Cache latest world->base transform for RT
+  realtime_tools::RealtimeBuffer<Eigen::Isometry3d> T_wb_rt_;
+  rclcpp::TimerBase::SharedPtr tf_timer_;
+
   // --- Params ---
   std::vector<std::string> joint_names_;
   std::string base_link_, tip_link_, inner_ctrl_name_;
@@ -120,7 +138,7 @@ private:
   // NEW QP params
   double rho_posture_{0.05};     // posture strength in QP
   double qp_reg_{1e-4};          // add small diag to H for numerical stability
-  double w_pos_{1.0}, w_rot_{1.0}, w_z_{1.0};  // EE tracking weights (simple knobs)
+  double w_pos_{1.0}, w_rot_{5.0}, w_z_{5.0};  // EE tracking weights (simple knobs)
 
   // posture gains (existing)
   std::vector<double> null_kp_, null_kd_, q_home_;
@@ -191,6 +209,33 @@ private:
 
     // Optional: store last solution for warm start
     Eigen::VectorXd x_prev_;
+
+
+    bool ee_ref_init_{false};
+    Eigen::Vector3d p_ref_;
+
+    KDL::Rotation R_ref_;
+    
+    double ee_kp_pos_{0.0};     // [1/s]
+    double ee_kp_rot_{0.0};     // [1/s]
+    double ee_kd_pos_{0.0};     // damp joints
+    double ee_kd_rot_{0.0};
+    
+
+
+    double ee_vmax_lin_{0.15};  // [m/s]
+    double ee_vmax_ang_{0.3};  // [rad/s]
+
+    double ee_ref_leak_{0.0};   // keep 0 for now
+    double ee_err_max_{0.3};   // [m] 3 cm (tighter to avoid big snaps)
+    double ee_rot_deadband_{0.05}; // [rad] ~3 deg
+    double ee_err_deadband_{0.01}; // [m] 1 cm
+
+    // uint64_t loop_count_{0};
+    // double loop_ms_ema_{0.0};     // exponential moving average
+    // double loop_ms_max_{0.0};
+    // std::chrono::steady_clock::time_point last_report_tp_;
+
 
 
 };

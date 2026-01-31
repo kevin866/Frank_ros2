@@ -76,7 +76,7 @@ class EETrajectoryGenerator(Node):
         self.traj_z = make_quintic(p0.z, pf.z, self.T)
         self.t = 0.0
         self.active = True
-        # self.get_logger().info("EE trajectory started")
+        self.get_logger().info("EE trajectory started")
 
     def spin(self):
         if not self.active:

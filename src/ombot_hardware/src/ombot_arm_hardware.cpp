@@ -1,7 +1,6 @@
 #include "ombot_hardware/ombot_arm_hardware.hpp"
 #include <string>
 #include <vector>
-#include <chrono>
 
 
 namespace ombot_hardware
@@ -469,13 +468,21 @@ return_type OMBotArmSystem::write(const rclcpp::Time&, const rclcpp::Duration&) 
     }
   }
   // auto t1 = std::chrono::steady_clock::now();
+
+  // if (t_prev_.time_since_epoch().count() == 0) {
+  //   t_prev_ = t1;
+  // } else {
+  //   double loop_ms = std::chrono::duration<double, std::milli>(t1 - t_prev_).count();
+  //   t_prev_ = t1;
+  //   RCLCPP_INFO_THROTTLE(rclcpp::get_logger("OMBotHW"), *clock_, 1000,
+  //       "Full HW loop = %.2f ms (%.1f Hz)", loop_ms, 1000.0 / std::max(1e-3, loop_ms));
+  // }
+
   // double write_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
   // RCLCPP_INFO_THROTTLE(rclcpp::get_logger("OMBotHW"), *clock_, 1000,
   //     "HW write took %.2f ms", write_ms);
-  // double loop_ms = std::chrono::duration<double, std::milli>(t1 - t_prev_).count();
-  // t_prev_ = t1;
-  // RCLCPP_INFO_THROTTLE(rclcpp::get_logger("OMBotHW"), *clock_, 1000,
-  //     "Full HW loop = %.2f ms", loop_ms);
+
+
   return ok ? return_type::OK : return_type::ERROR;
 }
 

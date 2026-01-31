@@ -84,7 +84,7 @@ def generate_launch_description():
             "world_frame": "world",
             "topic": "/goal_pose",
             "rate_hz": 5.0,
-            'goal': "0.5 1.0 0.5 0.0",
+            'goal': "1.2 1.0 0.5 0.0",
         }]
     )
 
@@ -100,10 +100,10 @@ def generate_launch_description():
             "rate_hz": 100.0,
             "T_base": 2.0,
             "T_ee": 2.0,
-            "max_base_v": 0.25,
-            "max_base_w": 0.4,
-            "max_ee_v": 0.25,
-            "max_ee_w": 0.8,
+            "Kp_track": 15.0,
+            "Kyaw": 15.0,
+            "Kd_track": 5.0,
+            "Kd_yaw": 5.0,
         }],
     )
 
@@ -196,9 +196,9 @@ def generate_launch_description():
 
             # Gains
             "kp_pos": 2.0,
-            "kp_rot": 0.0,   # consider 0.0 initially until frames are verified
+            "kp_rot": 1.0,   # consider 0.0 initially until frames are verified
             "kd_pos": 0.2,
-            "kd_rot": 0.0,
+            "kd_rot": 0.1,
 
             # Velocity caps (real robot: start smaller)
             "max_lin": 3.5,  # m/s (suggested safer start than 1.0)
@@ -293,8 +293,9 @@ def generate_launch_description():
         # goal_from_offset,
 
         # Start commander + bag once WB controller is active
-        start_commander_after_wb,
+        # start_commander_after_wb,
         start_bag_after_wb,
 
         end_when_control_exits,
     ])
+
