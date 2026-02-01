@@ -14,6 +14,9 @@ controller_manager:
     joint_impedance_controller:
       type: ombot_controller/JointImpedanceController
 
+    cartesian_impedance_controller:
+      type: ombot_controller/CartesianImpedanceController
+
     mecanum_controller:
       type: mecanum_drive_controller/MecanumDriveController
 
@@ -61,6 +64,32 @@ joint_impedance_controller:
     base_link: link_1
     tip_link:  end_link
     vel_lpf_alpha: 0.6   # 0.6 ~ noticeable filtering; 1.0 disables
+
+
+cartesian_impedance_controller:
+  ros__parameters:
+    joints: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6]
+    base_link: link_1
+    tip_link: end_link
+    # robot_description: "<URDF string or remap>"
+
+    # Cartesian stiffness/damping (diagonal, XYZ + RPY-like)
+    Kp_xyz: [200.0, 200.0, 200.0]     # N/m
+    Kd_xyz: [ 30.0,  30.0,  30.0]     # N/(m/s)
+    Kr_rpy: [ 20.0,  20.0,  20.0]     # Nm/rad
+    Dr_rpy: [  2.0,   2.0,   2.0]     # Nm/(rad/s)
+
+    # Safety clamps
+    wrench_force_limit: 80.0          # N
+    wrench_torque_limit: 10.0         # Nm
+    # effort_limits: [..optional per joint..]
+
+    use_gravity: true
+    gravity_xyz: [0.0, 0.0, -9.81]
+
+    publish_ee_pose: true
+    ee_pose_topic: "/ee_pose"
+
 
 # resolved_rate_controller:
 #   ros__parameters:
@@ -243,3 +272,6 @@ wb_qp_controller:
       kd_pos: 0.0
       kp_rot: 0.0
       kd_rot: 0.0
+
+
+

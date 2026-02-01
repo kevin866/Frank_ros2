@@ -43,4 +43,12 @@
     </description>
   </class>
 
+    <class
+      name="ombot_controller/CartesianImpedanceController"
+      type="ombot_controller::CartesianImpedanceController"
+      base_class_type="controller_interface::ChainableControllerInterface">
+      <description>Cartesian-space impedance controller</description>
+  </class>
+  
+
 </library>

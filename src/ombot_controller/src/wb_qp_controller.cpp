@@ -648,9 +648,6 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
     p_cur_world.x(), p_cur_world.y(), p_cur_world.z()
   );
 
-
-
-
   // rotation reference integrate: R_ref <- Exp(w*dt) * R_ref
   const double wx = vff_ang.x(), wy = vff_ang.y(), wz = vff_ang.z();
   const double wnorm = std::sqrt(wx*wx + wy*wy + wz*wz);

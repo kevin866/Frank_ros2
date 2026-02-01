@@ -41,6 +41,7 @@ add_library(${PROJECT_NAME} SHARED
   src/resolved_rate_controller.cpp
   src/wb_resolved_rate_controller.cpp
   src/wb_qp_controller.cpp
+  src/cartesian_impedance_controller.cpp
 
 )
 # target_include_directories(${PROJECT_NAME} PUBLIC
@@ -56,7 +57,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 ament_target_dependencies(${PROJECT_NAME}
   pluginlib rcpputils controller_interface realtime_tools
-  trajectory_msgs rclcpp rclcpp_lifecycle std_msgs kdl_parser orocos_kdl ombot_msgs osqp_vendor OsqpEigen tf2_geometry_msgs tf2_ros tf2
+  trajectory_msgs rclcpp rclcpp_lifecycle std_msgs kdl_parser 
+  orocos_kdl ombot_msgs osqp_vendor OsqpEigen tf2_geometry_msgs tf2_ros tf2
 )
 # target_link_libraries(${PROJECT_NAME} Eigen3::Eigen)
 
