@@ -18,6 +18,7 @@
 
 #include "realtime_tools/realtime_buffer.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
+ #include "rclcpp/node_interfaces/node_parameters_interface.hpp"
 
 // KDL / URDF (optional, for gravity feed-forward)
 #include "kdl/chain.hpp"
@@ -126,6 +127,8 @@ private:
   // Feedforward cache from subscriber stage (only used when not chained)
   std::vector<double> tau_ff_cache_, zero_ff_cache_;
   bool chained_mode_{false};  // true when controller is chained to an upstream controller
+  std::vector<double> Fc_, B_, v_deadband_, v_sgn_eps_, tau_bias_;
+
 
 
 
@@ -188,5 +191,8 @@ private:
       double q1, double v1, double a1,
       double T);
   };
+  inline double sgn_smooth(double x, double eps) {
+    return x / (std::abs(x) + eps);   // ~sign(x), but smooth near 0
+  }
 
 }  // namespace ombot_controller

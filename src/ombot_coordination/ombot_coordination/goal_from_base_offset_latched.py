@@ -153,7 +153,7 @@ class GoalFromOffset(Node):
         self.last_base = msg
 
         # Only latch once, when both base and ee are available
-        if self.latched_goal is None and self.last_ee is not None:
+        if self.latched_goal is None:
             goal = self.build_goal()
             if goal is not None:
                 self.latched_goal = goal
@@ -163,11 +163,15 @@ class GoalFromOffset(Node):
     # ------------------- helpers -------------------
 
     def build_goal(self) -> PoseStamped | None:
-        if self.last_base is None or self.last_ee is None:
+        self.get_logger().info("Latched goal (offset in base frame, pose in base frame)")
+
+        if self.last_base is None:
             return None
 
         base = self.last_base
-        ee   = self.last_ee
+        # ee   = self.last_ee
+        self.get_logger().info("Latched goal (offset in base frame, pose in base frame)")
+
 
         # Base position in world
         p_b_w = np.array([
@@ -179,15 +183,16 @@ class GoalFromOffset(Node):
         # Offset is given in base frame; rotate to world
         off_b = self.xyz_offset
 
-        p_ee= np.array([ee.pose.position.x,
-                   ee.pose.position.y,
-                   ee.pose.position.z])
+        # p_ee= np.array([ee.pose.position.x,
+        #            ee.pose.position.y,
+        #            ee.pose.position.z])
 
         p_goal = self.R_bw @ p_b_w + off_b + self.home_position
 
         goal = PoseStamped()
         goal.header.frame_id = 'base'
         goal.header.stamp = self.get_clock().now().to_msg()
+        self.get_logger().info("Latched goal (offset in base frame, pose in base frame)")
 
         # Position = base + rotated offset
         goal.pose.position.x = float(p_goal[0])
@@ -195,7 +200,7 @@ class GoalFromOffset(Node):
         goal.pose.position.z = float(p_goal[2])
 
         # Orientation: just use EE orientation (assumed already correct for your stack)
-        goal.pose.orientation = ee.pose.orientation
+        # goal.pose.orientation = ee.pose.orientation
 
         return goal
 

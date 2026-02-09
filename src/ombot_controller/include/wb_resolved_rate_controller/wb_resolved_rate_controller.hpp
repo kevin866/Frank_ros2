@@ -19,6 +19,7 @@
 #include "Eigen/Dense"
 #include <kdl/chainfksolverpos_recursive.hpp>
 #include "ombot_msgs/msg/whole_body_cmd.hpp"
+#include "std_msgs/msg/float64.hpp"
 
 namespace ombot_controller {
 
@@ -103,7 +104,7 @@ private:
   // In wb_resolved_rate_controller.hpp
   double base_weight_{1.0};  // cost weight for base DOFs
   double arm_weight_{1.0};   // cost weight for arm joints
-  double base_cmd_scale_ = 5.0;  // or 3.0, tune this
+  double base_cmd_scale_ = 1.0;  // or 3.0, tune this
   double v_lin_scale_ = 1.0;    // scale linear velocities
   double base_task_weight_ = 1.0;
   double ee_task_weight_ = 1.0;
@@ -126,6 +127,7 @@ private:
   // Base command publisher (to your mecanum controller topic)
   rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr base_cmd_pub_;
   std::string base_cmd_topic_{"cmd_vel"};   // or whatever you actually use
+
 
 
   // State interfaces (read from hardware)
@@ -172,23 +174,6 @@ private:
 
   rclcpp::Time last_cmd_time_;
   double cmd_timeout_{0.25};   // seconds; tune 0.1–0.5
-  // std::vector<double> q_min_ = {
-  //   -M_PI,        // Joint 1 : -π ~ π
-  //   -0.5 * M_PI,  // Joint 2 : -π/2 ~ π/2
-  //   -0.5 * M_PI,  // Joint 3 : -π/2 ~ 3π/4
-  //   -M_PI,        // Joint 4 : -π ~ π
-  //   -0.5 * M_PI,  // Joint 5 : -π/2 ~ π/2
-  //   -M_PI         // Joint 6 : -π ~ π
-  // };
-
-  // std::vector<double> q_max_ = {
-  //   M_PI,        // Joint 1
-  //   0.5 * M_PI,  // Joint 2
-  //   0.75 * M_PI, // Joint 3
-  //   M_PI,        // Joint 4
-  //   0.5 * M_PI,  // Joint 5
-  //   M_PI         // Joint 6
-  // };
 
   std::vector<double> q_min_ = {
     -0.8 * M_PI,        // Joint 1 : -π ~ π
@@ -207,6 +192,9 @@ private:
     0.4 * M_PI,         // Joint 5
     0.8 * M_PI          // Joint 6
   };
+
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr manip_pub_;
+
 
 };
 

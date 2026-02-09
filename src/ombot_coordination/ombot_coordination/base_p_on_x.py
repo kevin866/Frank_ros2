@@ -37,6 +37,8 @@ class BasePX(Node):
     def tick(self):
         if self.x is None or self.xg is None: return
         ex = self.xg - self.x
+        self.get_logger().info(f"ex = {ex:.4f}")
+
         v = self.kx * ex
 
         if abs(ex) <= self.tol:
@@ -51,7 +53,7 @@ class BasePX(Node):
         ts = TwistStamped()
         ts.header.stamp = self.get_clock().now().to_msg()   # <-- add this
         ts.header.frame_id = 'world'                         # or 'base_link' (not critical here)
-        ts.twist.linear.x = float(v)
+        ts.twist.linear.x = -float(v)
         self.pub_cmd.publish(ts)
 
 def main():

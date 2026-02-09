@@ -36,8 +36,12 @@ controller_interface::CallbackReturn WholeBodyResolvedRateController::on_init() 
     auto_declare<double>("base_vx_limit", base_vx_limit_);
     auto_declare<double>("base_vy_limit", base_vy_limit_);
     auto_declare<double>("base_wz_limit", base_wz_limit_);
-    auto_declare<double>("base_weight", base_weight_);
-    auto_declare<double>("arm_weight", arm_weight_);
+    // auto_declare<double>("base_weight", base_weight_);
+    base_weight_ = auto_declare<double>("base_weight", base_weight_);
+
+    // auto_declare<double>("arm_weight", arm_weight_);
+    arm_weight_ = auto_declare<double>("arm_weight", arm_weight_);
+
     auto_declare<double>("base_cmd_scale", base_cmd_scale_);
 
   } catch (...) { return CallbackReturn::ERROR; }
@@ -68,6 +72,9 @@ WholeBodyResolvedRateController::on_configure(const rclcpp_lifecycle::State &) {
   cmd_timeout_   = get_node()->get_parameter("cmd_timeout").as_double();
   v_min_        = get_node()->get_parameter("v_min").as_double();
   tau_rebase_ = get_node()->get_parameter("tau_rebase").as_double();
+  manip_pub_ = get_node()->create_publisher<std_msgs::msg::Float64>(
+  "manipulability", 10);
+
 
   // expected_frame_= get_node()->get_parameter("twist_frame").as_string();
   if (q_home_.size() != joint_names_.size()) q_home_.assign(joint_names_.size(), 0.0);
@@ -403,24 +410,10 @@ WholeBodyResolvedRateController::update_and_write_commands(
         //   "dq_raw=%.4f  dq_clamped=%.4f", dq_raw, dq_clamped);
       }
 
-      // RCLCPP_INFO_THROTTLE(
-      //   get_node()->get_logger(),                // logger
-      //   *get_node()->get_clock(),                // clock
-      //   1000,                                   // ms between prints
-      //   "Nullspace active: ||err||=%.4f  ||qdot_ref||=%.4f  null_kp=%.3f",
-      // //   err_norm, qdot_norm, null_kp_);
-      // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-      //   "NS: dt=%.4f dt_used=%.4f ||qdot_ref||=%.4f step_limit=%.4f sat_step=%zu/%zu",
-      //   dt, dt_used, Eigen::Map<Eigen::VectorXd>(qdot_ref_.data(), N).norm(),
-      //   step_limit_, sat_step, N);
-
     } else {
       for (size_t i = 0; i < N; ++i) {
         qdot_ref_[i] = 0.0;                            // hold
         q_ref_[i]    = q_kdl_(i);                      // rebase to measured pose
-        // RCLCPP_INFO_THROTTLE(
-        //   get_node()->get_logger(), *get_node()->get_clock(), 1000,
-        //   "Holding position (q[0]=%.3f)", q_kdl_(0));
       }
     }
 
@@ -480,101 +473,116 @@ WholeBodyResolvedRateController::update_and_write_commands(
 
   const int M = static_cast<int>(3 + N);  // 3 base + N joints
 
-  // 9xM stacked Jacobian
-  Eigen::MatrixXd Jstack(9, M);
-  Jstack.setZero();
-
-  // Base tracking rows: Vb = [vx vy wz] directly maps to base DOFs
-  Jstack.block<3,3>(0,0).setIdentity();
-
-  // EE rows: [Jb Je]
-  Jstack.block<6,3>(3,0) = Jb;          // 6x3
-  Jstack.block(3,3,6,N)  = Je;          // 6xN
 
   // // Whole-body J: [ J_base | J_arm ]  (6 x (3+N))
-  // Eigen::Matrix<double, 6, Eigen::Dynamic> Jwhole(6, 3 + N);
-  // Jwhole.block<6,3>(0,0)       = Jb;
-  // Jwhole.block(0,3,6,N)        = Je;
+  Eigen::Matrix<double, 6, Eigen::Dynamic> Jwhole(6, 3 + N);
+  Jwhole.block<6,3>(0,0)       = Jb;
+  Jwhole.block(0,3,6,N)        = Je; 
 
-  Eigen::Matrix<double,9,1> vstack;
-  vstack.setZero();
+  Eigen::Matrix<double,6,1> v;
+  v << cmd_cached_.vx, cmd_cached_.vy, cmd_cached_.vz,
+      cmd_cached_.wx, cmd_cached_.wy, cmd_cached_.wz;
 
-  // Base desired (trajectory tracking command)
-  vstack(0) = cmd_cached_.bvx;
-  vstack(1) = cmd_cached_.bvy;
-  vstack(2) = cmd_cached_.bwz;
+  // optional: scale linear vs angular
+  v.head<3>() *= v_lin_scale_;
+  v.tail<3>() *= v_ang_scale_;
 
-  // EE desired (trajectory tracking command)
-  vstack.segment<6>(3) << cmd_cached_.vx, cmd_cached_.vy, cmd_cached_.vz,
-                          cmd_cached_.wx, cmd_cached_.wy, cmd_cached_.wz;
-
-
-  double v_lin_gain = v_lin_scale_;   // e.g. 1.0, 2.0, 5.0
-  double v_ang_gain = v_ang_scale_;   // maybe smaller than linear
-
-  // Eigen::Matrix<double, 6, 1> v;
-  // v << cmd_cached_.vx, cmd_cached_.vy, cmd_cached_.vz,
-  //     cmd_cached_.wx, cmd_cached_.wy, cmd_cached_.wz;
-
-  // Scale translational vs rotational differently if you want
-  vstack.segment<3>(0) *= base_task_weight_;     // new param
-  vstack.segment<3>(0) *= v_lin_gain;   // x,y,z
-  vstack.segment<3>(3) *= v_ang_gain;   // wx,wy,wz
-  vstack(5) *= 0.02;  // z gets extra reduction
-
-  RCLCPP_INFO_THROTTLE(
-    get_node()->get_logger(),
-    *get_node()->get_clock(),
-    1000,   // ms
-    "vstack: base[vx=%.3f vy=%.3f wz=%.3f] ee[vx=%.3f vy=%.3f vz=%.3f wx=%.3f wy=%.3f wz=%.3f]",
-    vstack(0), vstack(1), vstack(2),
-    vstack(3), vstack(4), vstack(5),
-    vstack(6), vstack(7), vstack(8)
-  );
-
-
-  Eigen::Matrix<double,9,9> Wt = Eigen::Matrix<double,9,9>::Identity();
-  Wt.block<3,3>(0,0) *= base_task_weight_;  // e.g. 1.0
-  Wt.block<6,6>(3,3) *= ee_task_weight_;    // e.g. 2.0 (prioritize EE)
-
-  Eigen::MatrixXd Jw = Wt * Jstack;
-  Eigen::Matrix<double,9,1> vw = Wt * vstack;
-
-
-  // 5) Weighted damped resolved-rate: minimize ||J u - v||^2 + λ^2 ||W u||^2
-  // We implement this by column-scaling J: J_scaled = J * W^{-1}
   const double lam2 = lambda_ * lambda_;
 
-  // DOF weights: larger = more expensive motion on that DOF
+  // weights on DOFs (bigger = more expensive motion)
   Eigen::VectorXd w(M);
-  // First 3 entries: base DOFs [vx, vy, wz]
-  w.segment<3>(0).setConstant(base_weight_);
-  // Remaining N entries: arm joints
-  w.segment(M - static_cast<int>(N), static_cast<int>(N)).setConstant(arm_weight_);
+  w.segment<3>(0).setConstant(base_weight_);                 // base vx, vy, wz
+  w.segment(3, static_cast<int>(N)).setConstant(arm_weight_);// joints
 
-  Eigen::VectorXd inv_w = w.cwiseInverse();  // W^{-1} diagonal entries
+  Eigen::VectorXd inv_w = w.cwiseInverse();
+  // std::stringstream ss;
+  // ss << w.transpose();  // or << inv_w.transpose().format(fmt);
 
-  // Column-scaled whole-body Jacobian: J_scaled = Jwhole * W^{-1}
-  // Eigen::MatrixXd J_scaled = Jwhole;  // 6 x M
-  Eigen::MatrixXd J_scaled = Jw;
-  for (int j = 0; j < M; ++j) {
-    J_scaled.col(j) *= inv_w(j);
+  // RCLCPP_INFO(get_node()->get_logger(), "w = %s", ss.str().c_str());
+    // Column-scale: J_scaled = Jwhole * W^{-1}
+    Eigen::MatrixXd J_scaled = Jwhole;
+    for (int j = 0; j < M; ++j) J_scaled.col(j) *= inv_w(j);
+
+  // A = J_scaled J_scaled^T + λ^2 I  (6x6)
+  Eigen::Matrix<double,6,6> A =
+      (J_scaled * J_scaled.transpose())
+    + lam2 * Eigen::Matrix<double,6,6>::Identity();
+  Eigen::LDLT<Eigen::Matrix<double,6,6>> ldlt(A);
+
+  Eigen::VectorXd u_prime = J_scaled.transpose() * ldlt.solve(v);
+  Eigen::VectorXd u_task = inv_w.asDiagonal() * u_prime;
+
+
+  Eigen::Matrix<double,6,6> Ainv = ldlt.solve(Eigen::Matrix<double,6,6>::Identity());
+
+  Eigen::MatrixXd J_pinv = inv_w.asDiagonal() * (J_scaled.transpose() * Ainv);  // (Mx6)
+
+  Eigen::MatrixXd Nproj = Eigen::MatrixXd::Identity(M, M) - J_pinv * Jwhole;
+
+  Eigen::VectorXd u_post = Eigen::VectorXd::Zero(M);
+
+  // simple posture hold toward q_home_ (joint space)
+  // for (size_t i = 0; i < N; ++i) {
+  //   const double e = q_home_[i] - q_kdl_(i);
+  //   u_post(3 + i) = null_kp_[i] * e - null_kd_[i] * dq_kdl_(i);
+  // }
+  double task_norm = u_task.norm();
+
+  Eigen::VectorXd e_post(N);
+
+  for (size_t i = 0; i < N; ++i) {
+    e_post(i) = q_home_[i] - q_kdl_(i);
+    u_post(3 + i) = null_kp_[i] * e_post(i)
+                  - null_kd_[i] * dq_kdl_(i);
   }
 
-  // A = J_scaled J_scaled^T + λ^2 I (6x6)
-  Eigen::Matrix<double, 9, 9> JJt = J_scaled * J_scaled.transpose();
-  Eigen::Matrix<double, 9, 9> A   = JJt + lam2 * Eigen::Matrix<double, 9, 9>::Identity();
-  auto solver = A.ldlt();
+  double e_post_norm = e_post.norm();
 
-  // Solve in scaled coordinates: u' = J_scaled^T (A^{-1} v)
-  Eigen::VectorXd u_prime = J_scaled.transpose() * solver.solve(vw);
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(),
+  //   *get_node()->get_clock(),
+  //   100,
+  //   "posture_error_norm = %.4f rad, task_command_norm = %.4f",
+  //   e_post_norm,
+  //   task_norm
+  // );
 
-  // Back to original coordinates: u = W^{-1} u'
-  Eigen::VectorXd u = inv_w.asDiagonal() * u_prime;
 
-  // Split base and arm components
-  Eigen::Vector3d v_base = u.head<3>();
-  Eigen::VectorXd qdot   = u.tail(N);
+
+
+
+
+
+
+  // RCLCPP_INFO(get_node()->get_logger(), "task_norm = %.6f", task_norm);
+  // err_norm: your EE (or combined) task error magnitude
+  // double e_on  = 0.010;   // enable below 1 cm (tune)
+  // double e_off = 0.030;   // disable above 3 cm (tune)
+  // static bool posture_enabled = false;
+
+  // if (!posture_enabled && err_norm < e_on) posture_enabled = true;
+  // if ( posture_enabled && err_norm > e_off) posture_enabled = false;
+
+  // double alpha = 0.0;
+  // if (posture_enabled) {
+  //   // smooth ramp: 0 at e_off, 1 at 0
+  //   alpha = std::clamp((e_off - err_norm) / (e_off - e_on), 0.0, 1.0);
+  // }
+
+  // Eigen::VectorXd post_term = Nproj * u_post;
+  // u_total = u_task + alpha * post_term;
+
+  // Combine
+  Eigen::VectorXd u_total = u_task + Nproj * u_post;
+
+  // split
+  Eigen::Vector3d v_base = u_total.head<3>();
+  Eigen::VectorXd qdot   = u_total.tail(N);
+
+  Eigen::MatrixXd leak = Jwhole * (Nproj * u_post);
+  // RCLCPP_INFO(get_node()->get_logger(), "leak_norm=%g", leak.norm());
+
+
 
   double margin = 5.0 * M_PI / 180.0;  // 5 deg safety margin
 
@@ -651,28 +659,46 @@ WholeBodyResolvedRateController::update_and_write_commands(
     base_cmd.header.stamp = now;
     base_cmd.header.frame_id = base_link_;  // e.g. "base_link"
     base_cmd.twist.linear.x  = -k_base * v_base[0];
-    base_cmd.twist.linear.y  = k_base * v_base[1];
+    base_cmd.twist.linear.y  = -k_base * v_base[1];
     base_cmd.twist.linear.z  = 0.0;
     base_cmd.twist.angular.x = 0.0;
     base_cmd.twist.angular.y = 0.0;
     base_cmd.twist.angular.z = k_base * v_base[2];
-    // base_cmd_pub_->publish(base_cmd);
+    base_cmd_pub_->publish(base_cmd);
 
-    RCLCPP_INFO_THROTTLE(
-        get_node()->get_logger(), *get_node()->get_clock(), 1000,
-        "WB: v_base=(%.3f %.3f %.3f)  qdot=(%.3f %.3f %.3f %.3f %.3f %.3f)  r_be=(%.3f %.3f)",
-        v_base.x(), v_base.y(), v_base.z(),
-        qdot[0], qdot[1], qdot[2], qdot[3], qdot[4], qdot[5],
-        r_be.x(), r_be.y()
-    );
+    // RCLCPP_INFO_THROTTLE(
+    //     get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    //     "WB: v_base=(%.3f %.3f %.3f)  qdot=(%.3f %.3f %.3f %.3f %.3f %.3f)  r_be=(%.3f %.3f)",
+    //     v_base.x(), v_base.y(), v_base.z(),
+    //     qdot[0], qdot[1], qdot[2], qdot[3], qdot[4], qdot[5],
+    //     r_be.x(), r_be.y()
+    // );
 
     // v_ee contribution from arm joints
     // Eigen::Matrix<double, 6, 1> v_ee_arm = Je * qdot;
 
-    // // v_ee contribution from base
+    // J: 6 x n Jacobian (Eigen::MatrixXd)
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(J.data, Eigen::ComputeThinU | Eigen::ComputeThinV);
+
+    // manipulability = product of singular values
+    double manipulability = 1.0;
+    for (int i = 0; i < svd.singularValues().size(); ++i) {
+      manipulability *= svd.singularValues()(i);
+    }
+    std_msgs::msg::Float64 msg;
+    msg.data = manipulability;
+    manip_pub_->publish(msg);
+    RCLCPP_INFO_THROTTLE(
+      get_node()->get_logger(),
+      *get_node()->get_clock(),
+      100,   // ms
+      "Manipulability = %.4e", manipulability
+    );
+
+    // v_ee contribution from base
     // Eigen::Matrix<double, 6, 1> v_ee_base = Jb * v_base;
 
-    // total
+    // // total
     // Eigen::Matrix<double, 6, 1> v_ee_tot = v_ee_arm + v_ee_base;
 
     // RCLCPP_INFO_THROTTLE(
@@ -681,17 +707,17 @@ WholeBodyResolvedRateController::update_and_write_commands(
     //     v_ee_arm(0), v_ee_arm(1), v_ee_arm(2), v_ee_arm(3), v_ee_arm(4), v_ee_arm(5)
     // );
 
-    // write_refs_to_slots();  
-    static double dt_min = 1e9;
-    static double dt_max = 0.0;
-    static double dt_sum = 0.0;
-    static size_t dt_count = 0;
+    write_refs_to_slots();  
+    // static double dt_min = 1e9;
+    // static double dt_max = 0.0;
+    // static double dt_sum = 0.0;
+    // static size_t dt_count = 0;
 
-    // double dt = period.seconds();
-    dt_min = std::min(dt_min, dt);
-    dt_max = std::max(dt_max, dt);
-    dt_sum += dt;
-    dt_count++;
+    // // double dt = period.seconds();
+    // dt_min = std::min(dt_min, dt);
+    // dt_max = std::max(dt_max, dt);
+    // dt_sum += dt;
+    // dt_count++;
 
     // RCLCPP_INFO_THROTTLE(
     //     get_node()->get_logger(), *get_node()->get_clock(), 1000,
@@ -705,3 +731,7 @@ WholeBodyResolvedRateController::update_and_write_commands(
 } // namespace ombot_controller
 
 PLUGINLIB_EXPORT_CLASS(ombot_controller::WholeBodyResolvedRateController, controller_interface::ChainableControllerInterface)
+
+
+
+

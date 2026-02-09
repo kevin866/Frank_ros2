@@ -18,7 +18,6 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     bag_prefix   = LaunchConfiguration('bag_prefix',   default='ombot_run')
     storage      = LaunchConfiguration('storage',      default='sqlite3')
-    compress     = LaunchConfiguration('compress',     default='zstd')
     qos_path     = LaunchConfiguration(
         'qos_overrides',
         default='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'
@@ -84,7 +83,7 @@ def generate_launch_description():
             "world_frame": "world",
             "topic": "/goal_pose",
             "rate_hz": 5.0,
-            'goal': "0.8 1.0 0.5 0.0",
+            'goal': "1.8 0.5 0.475 0.0",
         }]
     )
 
@@ -162,15 +161,15 @@ def generate_launch_description():
             "ee_twist_topic": "/wb_resolved_rate_controller/ee_twist",
 
             # Gains
-            "kp_pos": 2.0,
+            "kp_pos": 0.5,
             "kp_rot": 0.0,   # consider 0.0 initially until frames are verified
-            "kd_pos": 0.2,
-            "kd_rot": 0.0,
+            "kd_pos": 0.1,
+            "kd_rot": 0.00,
 
             # Velocity caps (real robot: start smaller)
-            "max_lin": 3.5,  # m/s (suggested safer start than 1.0)
-            "max_ang": 1.0,  # rad/s
-        }],
+            "max_lin": 1.0,  # m/s (suggested safer start than 1.0)
+            "max_ang": 0.5,  # rad/s
+            }],
     )
 
 
@@ -187,15 +186,14 @@ def generate_launch_description():
         '/vrpn_mocap/RigidBody_2/pose',
         '/goal_pose',
         '/joint_states',
-        '/ee_pose'
+        '/ee_pose',
+        '/manipulability', 
     ]
 
     bag_cmd_final = [
         'ros2', 'bag', 'record', *topics_to_record,
         '--output', LaunchConfiguration('bag_prefix'),
         '--storage', LaunchConfiguration('storage'),
-        '--compression-mode', 'file',
-        '--compression-format', LaunchConfiguration('compress'),
         '--max-bag-size', LaunchConfiguration('max_bag_size'),
         '--max-bag-duration', LaunchConfiguration('max_bag_secs'),
         '--qos-profile-overrides-path', LaunchConfiguration('qos_overrides')
@@ -221,7 +219,6 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time',  default_value='false'),
         DeclareLaunchArgument('bag_prefix',    default_value='ombot_run1'),
         DeclareLaunchArgument('storage',       default_value='sqlite3'),
-        DeclareLaunchArgument('compress',      default_value='zstd'),
         DeclareLaunchArgument(
             'qos_overrides',
             default_value='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'

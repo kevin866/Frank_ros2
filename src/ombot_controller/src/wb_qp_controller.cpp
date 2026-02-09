@@ -604,9 +604,6 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
   const KDL::Vector p_cur = tip_frame_.p;
   const KDL::Rotation R_cur = tip_frame_.M;
 
-
-
-
   // p_cur_base from KDL
   Eigen::Vector3d p_cur_base(p_cur.x(), p_cur.y(), p_cur.z());
 

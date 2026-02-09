@@ -45,7 +45,7 @@ JointImpedanceController::on_export_reference_interfaces()
   refs.reserve(2 * N);
 
   // const std::string ctrl = "joint_impedance_controller";
-  const std::string ctrl = get_node()->get_name();  // ✅ instance-safe
+  const std::string ctrl = get_node()->get_name();  
 
 
   for (size_t i = 0; i < N; ++i) {
@@ -95,6 +95,11 @@ controller_interface::CallbackReturn JointImpedanceController::on_init()
     auto_declare<double>("ref_step_limit", 0.01);
     auto_declare<double>("ref_qdot_limit", 2.0);
     auto_declare<double>("ref_vel_alpha",  0.6);
+    auto_declare<std::vector<double>>("friction.Fc", {});          // Nm
+    auto_declare<std::vector<double>>("friction.B", {});           // Nms/rad
+    auto_declare<std::vector<double>>("friction.v_deadband", {});  // rad/s
+    auto_declare<std::vector<double>>("friction.v_sgn_eps", {});   // rad/s
+    auto_declare<std::vector<double>>("friction.tau_bias", {});    // Nm
 
 
   } catch (const std::exception &e) {
@@ -103,6 +108,44 @@ controller_interface::CallbackReturn JointImpedanceController::on_init()
   }
   return controller_interface::CallbackReturn::SUCCESS;
 }
+
+
+static std::vector<double> get_vec_or_broadcast(
+  const rclcpp::node_interfaces::NodeParametersInterface::SharedPtr & params,
+  const std::string & name,
+  size_t N,
+  double default_val)
+{
+  std::vector<double> v;
+
+  // If not declared / not set, treat as empty -> default
+  if (!params->has_parameter(name)) {
+    return std::vector<double>(N, default_val);
+  }
+
+  // Get the parameter as a parameter variant
+  const auto p = params->get_parameter(name);
+
+  // Accept either scalar double or double array
+  if (p.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE) {
+    return std::vector<double>(N, p.as_double());
+  }
+
+  if (p.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY) {
+    v = p.as_double_array();
+    if (v.empty()) return std::vector<double>(N, default_val);
+    if (v.size() == 1) return std::vector<double>(N, v[0]);
+    if (v.size() == N) return v;
+
+    throw std::runtime_error(
+      "Parameter " + name + " must have size 0, 1, or N=" + std::to_string(N) +
+      " but got " + std::to_string(v.size()));
+  }
+
+  throw std::runtime_error(
+    "Parameter " + name + " must be double or double_array");
+}
+
 
 controller_interface::CallbackReturn
 JointImpedanceController::on_configure(const rclcpp_lifecycle::State &)
@@ -233,6 +276,18 @@ JointImpedanceController::on_configure(const rclcpp_lifecycle::State &)
     "~/trajectory", rclcpp::SystemDefaultsQoS(),
     std::bind(&JointImpedanceController::traj_cb, this, std::placeholders::_1));
 
+  auto params = get_node()->get_node_parameters_interface();
+
+  try {
+    Fc_         = get_vec_or_broadcast(params, "friction.Fc",         N, 0.0);
+    B_          = get_vec_or_broadcast(params, "friction.B",          N, 0.0);
+    v_deadband_ = get_vec_or_broadcast(params, "friction.v_deadband", N, 0.02);
+    v_sgn_eps_  = get_vec_or_broadcast(params, "friction.v_sgn_eps",  N, 0.01);
+    tau_bias_   = get_vec_or_broadcast(params, "friction.tau_bias",   N, 0.0);
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR(get_node()->get_logger(), "Friction param error: %s", e.what());
+    return controller_interface::CallbackReturn::ERROR;
+  }
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -641,29 +696,22 @@ JointImpedanceController::update_and_write_commands(
   std::vector<double> tau_ff(N, 0.0);
 
   if (chained_mode_ && reference_interfaces_.size() == 2 * N) {
-    last_chained_ = false;  // so we rebase next time we re-enter chained mode
-    const size_t N = joint_names_.size();
-    qd_ref.resize(N);
-    dqd_ref.resize(N);
-
-    // Detect chained-mode edge and rebase integrator once
+    // Detect chained-mode edge ONCE
     if (!last_chained_) {
       for (size_t i = 0; i < N; ++i) qd_int_[i] = q_[i];
     }
     last_chained_ = true;
 
-    // 1) Read upstream refs: prefer velocity; position is optional
-    for (size_t i = 0; i < N; ++i) {
-      // const double qdot_in  = reference_interfaces_[N + i];   // <upstream>/<joint>/velocity
-      // Optional: if you also want to honor upstream position when present:
-      const double qpos_in = reference_interfaces_[i];
-      const double qdot_in  = reference_interfaces_[N + i];
-      const double qdot_c  = std::clamp(qdot_in, -ref_qdot_limit_, ref_qdot_limit_);
-      qd_ref[i]  = qpos_in;         // track upstream position directly
-      dqd_ref[i] = qdot_c;          // use upstream velocity for damping
-    }
+    qd_ref.resize(N);
+    dqd_ref.resize(N);
 
-    last_chained_ = true;           // (no internal integrator state to manage)
+    for (size_t i = 0; i < N; ++i) {
+      const double qpos_in = reference_interfaces_[i];
+      const double qdot_in = reference_interfaces_[N + i];
+      const double qdot_c  = std::clamp(qdot_in, -ref_qdot_limit_, ref_qdot_limit_);
+      qd_ref[i]  = qpos_in;
+      dqd_ref[i] = qdot_c;
+    }
 
   } else {
     last_chained_ = false;  // so we rebase next time we re-enter chained mode
@@ -693,13 +741,38 @@ JointImpedanceController::update_and_write_commands(
   if (use_gravity_) compute_gravity(q_, tau_g);
 
   // PD impedance + ff (+ gravity)
+  // for (size_t i = 0; i < N; ++i) {
+  //   const double e_pos = qd_ref[i]  - q_[i];
+  //   const double e_vel = dqd_ref[i] - dq_filt_[i];
+  //   double tau = kp_[i] * e_pos + kd_[i] * e_vel + tau_ff[i];
+  //   if (use_gravity_ && tau_g.size() == N) tau += tau_g[i];
+  //   tau_cmd_[i] = tau;
+  // }
+
   for (size_t i = 0; i < N; ++i) {
     const double e_pos = qd_ref[i]  - q_[i];
     const double e_vel = dqd_ref[i] - dq_filt_[i];
+
     double tau = kp_[i] * e_pos + kd_[i] * e_vel + tau_ff[i];
     if (use_gravity_ && tau_g.size() == N) tau += tau_g[i];
-    tau_cmd_[i] = tau;
+
+    // --- friction compensation ---
+    const double v = dq_filt_[i];
+    double tau_fric = 0.0;
+
+    if (std::abs(v) > v_deadband_[i]) {
+      tau_fric = Fc_[i] * sgn_smooth(v, v_sgn_eps_[i]) + B_[i] * v;
+    } else {
+      tau_fric = 0.0;  // deadband to prevent chatter
+    }
+
+    tau_cmd_[i] = tau + tau_fric + tau_bias_[i];  // tau_bias optional
   }
+
+
+
+
+
 
   // Clamp & write
   clamp_effort(tau_cmd_);
@@ -735,7 +808,6 @@ JointImpedanceController::update_and_write_commands(
 
   return controller_interface::return_type::OK;
 }
-// ...existing code...
 
 // helper: build one quintic between (q0,v0,a0) and (q1,v1,a1) over T
 std::array<double,6> JointImpedanceController::quintic_coeff(

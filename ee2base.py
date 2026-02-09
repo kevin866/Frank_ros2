@@ -37,13 +37,13 @@ class EEPoseToBaseVelocity(Node):
         self.ee_pose_init = None
 
         # Start slow: small gains
-        self.kx = -10000
-        self.ky = 10000
-        self.kz = 10000
+        self.kx = -1
+        self.ky = 1
+        self.kz = 1
 
         # Velocity limits
-        self.v_lin_max = 3.0
-        self.v_ang_max = 3.0
+        self.v_lin_max = 0.03
+        self.v_ang_max = 0.03
 
         self.get_logger().info("EE Pose to Base Velocity node started.")
 
@@ -68,7 +68,7 @@ class EEPoseToBaseVelocity(Node):
         dy = self.ee_pose.position.y - self.ee_pose_init.position.y
         # dz = self.ee_pose.position.z - self.ee_pose_init.position.z  # not used yet
 
-        deadzone_x = 0.01   # 1 cm dead zone
+        deadzone_x = 0.005   # 5 mm dead zone
         deadzone_y = 0.005   # 5 mm dead zone
         dx = self.apply_deadzone(dx, deadzone_x)
         dy = self.apply_deadzone(dy, deadzone_y)

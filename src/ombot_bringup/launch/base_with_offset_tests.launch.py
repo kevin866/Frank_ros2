@@ -58,13 +58,14 @@ def generate_launch_description():
         executable='goal_from_base_offset_latched',   # <-- match your setup.py entry point
         name='goal_from_offset',
         parameters=[{
-            'offset_x': -0.5,            # meters
+            # 'offset_x': 0.5,            # meters
             'publish_rate_hz': 20.0,     # republish goal with fresh timestamps
-            'mode': 'latch'              # default behavior (one-shot latch)
+            'mode': 'latch',              # default behavior (one-shot latch)
+            'offset_xyz': [-0.5, 0.0, 0.0] # 50cm forward in base frame
         }],
         # RigidBody_1 is the base mocap topic, RigidBody_2 would be the arm if needed.
         remappings=[
-            ('/vrpn_mocap/RigidBody_1/pose', '/vrpn_mocap/RigidBody_2/pose'),  # base
+            # ('/vrpn_mocap/RigidBody_1/pose', '/vrpn_mocap/RigidBody_2/pose'),  # base
             ('/goal_pose', '/goal_pose'),
         ],
         output='screen',
@@ -74,7 +75,7 @@ def generate_launch_description():
     base_p_on_x = Node(
         package='ombot_coordination',
         executable='base_p_on_x',
-        parameters=[{'kx': 3.0, 'vmax': 5.0, 'flip_forward': False}],
+        parameters=[{'kx': 0.1, 'vmax': 0.1, 'flip_forward': False}],
         # no remap for cmd_vel anymore
         output='screen'
     )

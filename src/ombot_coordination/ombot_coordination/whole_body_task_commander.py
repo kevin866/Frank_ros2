@@ -327,6 +327,7 @@ class WholeBodyTaskCommander(Node):
             self.log.warn(1.0, f"TF lookup {self.world_frame}->{self.base_frame} failed: {e}", key="tf_fail")
             return
         R_bw = R_wb.T
+        R_bw = np.eye(3)
 
         # Goal in world
         pg_w = np.array(self.goal.p, dtype=float)
@@ -335,6 +336,8 @@ class WholeBodyTaskCommander(Node):
 
         # Default: goal from /goal_pose (world) transformed into base
         pg_b_np = R_bw @ (pg_w - p_b_w)
+        # self.log.info(0.1, f"pg_b_np = {pg_b_np}")
+
         pg_b = [float(pg_b_np[0]), float(pg_b_np[1]), float(pg_b_np[2])]
         R_bg = (R_bw @ R_wg).tolist()
         vff = [0.0, 0.0, 0.0]
@@ -356,10 +359,6 @@ class WholeBodyTaskCommander(Node):
                 # self.log.warn(1.0, f"Using trajectory reference in {self.base_frame} frame")
             else:
                 self.log.warn(1.0, f"des_pose in '{self.des_pose.header.frame_id}', expected '{self.base_frame}'", key="des_pose_frame")
-        
-
-
-
 
         R_be_T = rotmat_transpose(R_be)   # ee -> base
         R_err  = rotmat_mul(R_be_T, R_bg) # ee -> goal (expressed in base)
@@ -368,11 +367,13 @@ class WholeBodyTaskCommander(Node):
         e_pos_b = [
             pg_b[0] - pe_b[0],
             pg_b[1] - pe_b[1],
-            pg_b[2] - pe_b[2],
+            0.0,  # pg_b[2] - pe_b[2],  # only XY for now
         ]
         # e_pos_b = np.array([e_pos_b[0], 0.0, 0.0])  # only X
+        # self.log.info(0.1, f"e_pos_b = {e_pos_b}")
+        # self.log.info(0.1, f"pe_b = {pe_b}")
 
-        self.log.info(1.0, f"e_pos_b = {e_pos_b}", key="e_pos_b")
+        # self.log.info(0.1, f"e_pos_b = {e_pos_b}", key="e_pos_b")
 
         # e_pos_b and e_rot_b already computed
 
@@ -395,9 +396,9 @@ class WholeBodyTaskCommander(Node):
         self.last_e_pos = e_pos_b.copy()
         self.last_e_rot = list(e_rot_b)
 
-        vx = vff[0] + self.kp_pos * e_pos_b[0]
-        vy = vff[1] + self.kp_pos * e_pos_b[1]
-        vz = vff[2] + self.kp_pos * e_pos_b[2]
+        vx = vff[0] + self.kp_pos * e_pos_b[0] + self.kd_pos * de_pos[0]
+        vy = vff[1] + self.kp_pos * e_pos_b[1] + self.kd_pos * de_pos[1]
+        vz = vff[2] + self.kp_pos * e_pos_b[2] + self.kd_pos * de_pos[2]
 
 
         wx = self.kp_rot * e_rot_b[0] + self.kd_rot * de_rot[0]

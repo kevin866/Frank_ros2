@@ -23,12 +23,24 @@ BAG_DIR = "ombot_run1"
 OUT_DIR = "plots_csv"   # folder to write many CSVs
 
 TOPICS = {
-  "/ee_pose": "pose",
-  "/ee_desired_pose": "pose",
-  "/ee_desired_twist": "twist",
-  "/wb_resolved_rate_controller/ee_twist": "twist",
-  "/base_desired_twist": "base_twist",
+  # End-effector
+  "/ee_pose": "pose",                                  # PoseStamped (usually)
+  "/wb_resolved_rate_controller/ee_twist": "twist",     # TwistStamped
+
+  # Base
+  "/mecanum_controller/reference": "twist",             # TwistStamped (you wrote TwistStamped)
+
+  # Tracking / mocap
+  "/vrpn_mocap/RigidBody_1/pose": "pose",               # PoseStamped
+  "/vrpn_mocap/RigidBody_2/pose": "pose",               # PoseStamped
+
+  # Goal
+  "/goal_pose": "pose",                                 # PoseStamped
+
+  # Robot state
+  "/joint_states": "joint_state",                       # sensor_msgs/JointState
 }
+
 
 # Optional constant time shift for tau_cmd (in seconds)
 # Positive = move tau later in time, Negative = earlier
