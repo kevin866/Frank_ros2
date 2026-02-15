@@ -57,6 +57,10 @@ GravityCancelController::on_configure(const rclcpp_lifecycle::State &)
   tip_link_    = get_node()->get_parameter("tip_link").as_string();
   scale_       = get_node()->get_parameter("scale").as_double();
   alpha_       = std::clamp(get_node()->get_parameter("alpha").as_double(), 0.0, 1.0);
+  // ee_pose_topic_ = get_node()->get_parameter("ee_pose_topic").as_string();
+  get_node()->declare_parameter<std::string>("ee_pose_topic", "/ee_pose");
+  get_node()->declare_parameter<std::string>("link_1", base_link_);
+
 
   if (joint_names_.empty() || base_link_.empty() || tip_link_.empty()) {
     RCLCPP_ERROR(get_node()->get_logger(),
@@ -130,6 +134,17 @@ GravityCancelController::on_configure(const rclcpp_lifecycle::State &)
   g_ = KDL::JntArray(N);
   last_cmd_.assign(N, 0.0);
 
+  ee_pose_topic_ = get_node()->get_parameter("ee_pose_topic").as_string();
+
+  // Publisher (QoS: sensor-ish is fine)
+  ee_pose_pub_ = get_node()->create_publisher<geometry_msgs::msg::PoseStamped>(
+    ee_pose_topic_, rclcpp::SystemDefaultsQoS()
+  );
+
+  // FK solver
+  fk_solver_ = std::make_unique<KDL::ChainFkSolverPos_recursive>(chain_);
+
+
   RCLCPP_INFO(get_node()->get_logger(),
               "GravityCancelController configured: base='%s', tip='%s', N=%zu, scale=%.3f, alpha=%.2f",
               base_link_.c_str(), tip_link_.c_str(), N, scale_, alpha_);
@@ -185,6 +200,31 @@ GravityCancelController::update(const rclcpp::Time &, const rclcpp::Duration &)
     command_interfaces_[i].set_value(out);
 
   }
+
+  KDL::Frame T_be;
+
+  if (fk_solver_->JntToCart(q_, T_be) >= 0)
+  {
+    geometry_msgs::msg::PoseStamped msg;
+
+    msg.header.stamp = get_node()->now();
+    msg.header.frame_id = base_link_;  
+
+    msg.pose.position.x = T_be.p.x();
+    msg.pose.position.y = T_be.p.y();
+    msg.pose.position.z = T_be.p.z();
+
+    double qx, qy, qz, qw;
+    T_be.M.GetQuaternion(qx, qy, qz, qw);
+
+    msg.pose.orientation.x = qx;
+    msg.pose.orientation.y = qy;
+    msg.pose.orientation.z = qz;
+    msg.pose.orientation.w = qw;
+
+    ee_pose_pub_->publish(msg);
+  }
+
 
   return controller_interface::return_type::OK;
 }

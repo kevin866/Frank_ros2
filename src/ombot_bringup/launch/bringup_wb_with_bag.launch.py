@@ -82,8 +82,8 @@ def generate_launch_description():
         parameters=[{
             "world_frame": "world",
             "topic": "/goal_pose",
-            "rate_hz": 5.0,
-            'goal': "1.8 0.5 0.475 0.0",
+            "rate_hz": 50.0,
+            'goal': "1.5 0.5 0.475 0.0",
         }]
     )
 
@@ -161,14 +161,14 @@ def generate_launch_description():
             "ee_twist_topic": "/wb_resolved_rate_controller/ee_twist",
 
             # Gains
-            "kp_pos": 0.5,
+            "kp_pos": 0.3,
             "kp_rot": 0.0,   # consider 0.0 initially until frames are verified
-            "kd_pos": 0.1,
-            "kd_rot": 0.00,
+            "kd_pos": 0.02,
+            "kd_rot": 0.0,
 
             # Velocity caps (real robot: start smaller)
-            "max_lin": 1.0,  # m/s (suggested safer start than 1.0)
-            "max_ang": 0.5,  # rad/s
+            "max_lin": 0.8,  # m/s (suggested safer start than 1.0)
+            "max_ang": 0.3,  # rad/s
             }],
     )
 

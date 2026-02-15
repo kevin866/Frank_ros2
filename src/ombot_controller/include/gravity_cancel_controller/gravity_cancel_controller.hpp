@@ -9,6 +9,9 @@
 #include "hardware_interface/loaned_state_interface.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <kdl/chainfksolverpos_recursive.hpp>
+
 
 // KDL / URDF
 #include "kdl/chain.hpp"
@@ -75,6 +78,10 @@ private:
 
   // ----- runtime buffers -----
   std::vector<double> last_cmd_;  // for LPF
+
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr ee_pose_pub_;
+  std::unique_ptr<KDL::ChainFkSolverPos_recursive> fk_solver_;
+  std::string ee_pose_topic_ = "/ee_pose";   // default topic
 };
 
 }  // namespace ombot_controller

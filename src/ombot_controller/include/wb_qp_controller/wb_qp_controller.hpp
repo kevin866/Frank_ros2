@@ -18,6 +18,9 @@
 #include <OsqpEigen/OsqpEigen.h>
 
 #include <Eigen/Dense>
+#include <Eigen/Core>
+#include <sstream>
+
 #include "pluginlib/class_list_macros.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 

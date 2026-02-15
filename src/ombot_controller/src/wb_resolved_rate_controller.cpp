@@ -63,11 +63,12 @@ WholeBodyResolvedRateController::on_configure(const rclcpp_lifecycle::State &) {
   base_link_ = get_node()->get_parameter("base_link").as_string();
   tip_link_  = get_node()->get_parameter("tip_link").as_string();
   lambda_    = get_node()->get_parameter("lambda").as_double();
-  qdot_limit_= get_node()->get_parameter("qdot_limit").as_double();
+  qdot_limit_ = get_node()->get_parameter("qdot_limit").as_double();
   // null_kp_   = get_node()->get_parameter("null_kp").as_double();
   // null_kp_ = get_node()->get_parameter("null_kp").as_double_array();
   // null_kd_ = get_node()->get_parameter("null_kd").as_double_array();
   q_home_    = get_node()->get_parameter("q_home").as_double_array();
+  qdot_post_max_ = get_node()->get_parameter("qdot_post_max").as_double_array();
   inner_ctrl_name_ = get_node()->get_parameter("inner_controller").as_string();
   cmd_timeout_   = get_node()->get_parameter("cmd_timeout").as_double();
   v_min_        = get_node()->get_parameter("v_min").as_double();
@@ -538,42 +539,39 @@ WholeBodyResolvedRateController::update_and_write_commands(
 
   double e_post_norm = e_post.norm();
 
-  // RCLCPP_INFO_THROTTLE(
-  //   get_node()->get_logger(),
-  //   *get_node()->get_clock(),
-  //   100,
-  //   "posture_error_norm = %.4f rad, task_command_norm = %.4f",
-  //   e_post_norm,
-  //   task_norm
+  RCLCPP_INFO_THROTTLE(
+    get_node()->get_logger(),
+    *get_node()->get_clock(),
+    100,
+    "posture_error_norm = %.4f rad, task_command_norm = %.4f",
+    e_post_norm,
+    task_norm
+  );
+
+  double alpha = 1.0;
+
+  const double task_thresh = 0.2;   // tune this
+  const double task_exit  = 0.4;   // hysteresis
+
+  // if (task_norm < task_enter)
+  //     alpha = 1.0;
+  // else if (task_norm > task_exit)
+  //     alpha = 0.0;
+  // else
+  //     alpha = (task_exit - task_norm) / (task_exit - task_enter);
+  // alpha = std::clamp(
+  //     (task_thresh - task_norm) / task_thresh,
+  //     0.0,
+  //     1.0
   // );
 
-
-
-
-
-
-
-
-  // RCLCPP_INFO(get_node()->get_logger(), "task_norm = %.6f", task_norm);
-  // err_norm: your EE (or combined) task error magnitude
-  // double e_on  = 0.010;   // enable below 1 cm (tune)
-  // double e_off = 0.030;   // disable above 3 cm (tune)
-  // static bool posture_enabled = false;
-
-  // if (!posture_enabled && err_norm < e_on) posture_enabled = true;
-  // if ( posture_enabled && err_norm > e_off) posture_enabled = false;
-
-  // double alpha = 0.0;
-  // if (posture_enabled) {
-  //   // smooth ramp: 0 at e_off, 1 at 0
-  //   alpha = std::clamp((e_off - err_norm) / (e_off - e_on), 0.0, 1.0);
+  // // Combine
+  // for (size_t i = 0; i < N; ++i) {
+  //   u_post(3+i) = std::clamp(u_post(3+i), -qdot_post_max_[i], qdot_post_max_[i]);
   // }
+  
+  Eigen::VectorXd u_total = u_task + alpha * (Nproj * u_post);
 
-  // Eigen::VectorXd post_term = Nproj * u_post;
-  // u_total = u_task + alpha * post_term;
-
-  // Combine
-  Eigen::VectorXd u_total = u_task + Nproj * u_post;
 
   // split
   Eigen::Vector3d v_base = u_total.head<3>();
@@ -685,15 +683,15 @@ WholeBodyResolvedRateController::update_and_write_commands(
     for (int i = 0; i < svd.singularValues().size(); ++i) {
       manipulability *= svd.singularValues()(i);
     }
-    std_msgs::msg::Float64 msg;
-    msg.data = manipulability;
-    manip_pub_->publish(msg);
-    RCLCPP_INFO_THROTTLE(
-      get_node()->get_logger(),
-      *get_node()->get_clock(),
-      100,   // ms
-      "Manipulability = %.4e", manipulability
-    );
+    // std_msgs::msg::Float64 msg;
+    // msg.data = manipulability;
+    // manip_pub_->publish(msg);
+    // RCLCPP_INFO_THROTTLE(
+    //   get_node()->get_logger(),
+    //   *get_node()->get_clock(),
+    //   100,   // ms
+    //   "Manipulability = %.4e", manipulability
+    // );
 
     // v_ee contribution from base
     // Eigen::Matrix<double, 6, 1> v_ee_base = Jb * v_base;

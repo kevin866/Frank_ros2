@@ -146,7 +146,9 @@ class WholeBodyTaskCommander(Node):
         self.declare_parameter("ee_pose_topic", "/ee_pose")
         self.declare_parameter("goal_pose_topic", "/goal_pose")
         # Controller's private "~ee_twist" topic will expand to "<controller_name>/ee_twist"
-        self.declare_parameter("desired_twist_topic", "/wb_resolved_rate_controller/desired_twist")
+        # self.declare_parameter("desired_twist_topic", "/wb_resolved_rate_controller/desired_twist")
+        self.declare_parameter("desired_twist_topic", "/resolved_rate_controller/ee_twist")
+
 
         # Simple PD gains in base frame
         self.declare_parameter("kp_pos", 1.0)
@@ -171,7 +173,6 @@ class WholeBodyTaskCommander(Node):
         ee_pose_topic   = self.get_parameter("ee_pose_topic").get_parameter_value().string_value
         goal_pose_topic = self.get_parameter("goal_pose_topic").get_parameter_value().string_value
         desired_twist_topic  = self.get_parameter("desired_twist_topic").get_parameter_value().string_value
-
         self.kp_pos = self.get_parameter("kp_pos").value
         self.kp_rot = self.get_parameter("kp_rot").value
         self.kd_pos = self.get_parameter("kd_pos").value
@@ -223,8 +224,10 @@ class WholeBodyTaskCommander(Node):
             PoseStamped, goal_pose_topic, self.goal_cb, reliable_qos)
         
         # Publisher to the controller; reliable is fine here
-        # self.pub_twist = self.create_publisher(
-        #     TwistStamped, desired_twist_topic, reliable_qos)
+        self.pub_twist = self.create_publisher(
+            TwistStamped, desired_twist_topic, reliable_qos)
+
+
 
         self.pub_wb_cmd = self.create_publisher(WholeBodyCmd, "/wb_cmd", 10)
 
@@ -269,15 +272,7 @@ class WholeBodyTaskCommander(Node):
         # R_wb  = S @ R_wb
         return R_wb, p_b_w
 
-    # def lookup_world_T_base(self):
-    #     tf = self.tf_buffer.lookup_transform(self.world_frame, self.base_frame, rclpy.time.Time())
-    #     t = tf.transform.translation
-    #     q = tf.transform.rotation
 
-    #     p_raw = np.array([t.x, t.y, t.z], dtype=float)
-    #     R_raw = np.array(quat_to_rotmat(q.x, q.y, q.z, q.w), dtype=float)  # world <- base
-    
-    #     return R_wb, p_b_w
 
 
 
@@ -337,6 +332,7 @@ class WholeBodyTaskCommander(Node):
         # Default: goal from /goal_pose (world) transformed into base
         pg_b_np = R_bw @ (pg_w - p_b_w)
         # self.log.info(0.1, f"pg_b_np = {pg_b_np}")
+        
 
         pg_b = [float(pg_b_np[0]), float(pg_b_np[1]), float(pg_b_np[2])]
         R_bg = (R_bw @ R_wg).tolist()
@@ -369,9 +365,11 @@ class WholeBodyTaskCommander(Node):
             pg_b[1] - pe_b[1],
             0.0,  # pg_b[2] - pe_b[2],  # only XY for now
         ]
-        # e_pos_b = np.array([e_pos_b[0], 0.0, 0.0])  # only X
+        e_pos_b = np.array([e_pos_b[0], e_pos_b[1], 0.0])  # only XY
         # self.log.info(0.1, f"e_pos_b = {e_pos_b}")
         # self.log.info(0.1, f"pe_b = {pe_b}")
+        # self.log.info(0.1, f"pg_b = {pg_b}")
+
 
         # self.log.info(0.1, f"e_pos_b = {e_pos_b}", key="e_pos_b")
 
@@ -417,6 +415,7 @@ class WholeBodyTaskCommander(Node):
         wx = clamp(wx, -self.max_ang, self.max_ang)
         wy = clamp(wy, -self.max_ang, self.max_ang)
         wz = clamp(wz, -self.max_ang, self.max_ang)
+    
 
 
         # 7) Publish command in base_link frame for whole-body controller
@@ -450,6 +449,18 @@ class WholeBodyTaskCommander(Node):
         #     f"ang({wx:.3f}, {wy:.3f}, {wz:.3f})",
         #     key="twist_cmd"
         # )
+
+
+        # msg_twist = TwistStamped()
+        # msg_twist.header.stamp = now.to_msg()
+        # msg_twist.header.frame_id = self.base_frame
+        # msg_twist.twist.linear.x = float(vx)
+        # msg_twist.twist.linear.y = float(vy)
+        # msg_twist.twist.linear.z = float(vz)
+        # msg_twist.twist.angular.x = float(wx)
+        # msg_twist.twist.angular.y = float(wy)
+        # msg_twist.twist.angular.z = float(wz)
+        # self.pub_twist.publish(msg_twist)
 
 
 

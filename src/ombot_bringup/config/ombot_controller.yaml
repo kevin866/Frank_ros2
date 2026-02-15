@@ -98,27 +98,16 @@ cartesian_impedance_controller:
     ee_pose_topic: "/ee_pose"
 
 
-# resolved_rate_controller:
-#   ros__parameters:
-#     joints: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6]
-#     base_link: link_1
-#     tip_link: end_link
-#     inner_controller: "joint_impedance_controller"
-#     lambda: 0.02
-#     qdot_limit: 2.5
-#     # null_kp: 5.0
-#     null_kp: [3.0, 3.0, 2.0, 1.0, 0.5, 0.3]
-#     null_kd: [0.8, 0.8, 0.6, 0.4, 0.25, 0.2]
-#     step_limit: 0.015
-#     dt_ceiling: 0.02
-#     # q_home: [0.0,-0.7854,0.4,0.0,0.4,0.0]   # or your preferred posture
-#     q_home: [0.0,-0.66,0.4,0.5,0.35,0.0]   # or your preferred posture
-
 resolved_rate_controller:
   ros__parameters:
     joints: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6]
-    null_kp: [3.0, 3.0, 2.0, 1.0, 0.5, 0.3]
-    null_kd: [0.8, 0.8, 0.6, 0.4, 0.25, 0.2]
+    # null_kp: [3.0, 3.0, 2.0, 1.0, 0.5, 0.3]
+    # null_kd: [0.8, 0.8, 0.6, 0.4, 0.25, 0.2]
+    null_kp: [30.0, 30.0, 20.0, 20.0, 10.0, 5.0]
+    null_kd: [2.0, 2.0, 1.5, 1.0, 0.6, 0.3]
+  
+    # null_kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    # null_kd: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     q_home:  [0.0, -0.66, 0.4, 0.0, 0.30, 0.0]
     base_link: link_1
     tip_link:  end_link
@@ -134,6 +123,7 @@ resolved_rate_controller:
     cmd_timeout: 0.25
     v_deadband: 0.0001
 
+
 wb_resolved_rate_controller:
   ros__parameters:
     joints: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6]
@@ -141,6 +131,12 @@ wb_resolved_rate_controller:
     # null_kd: [0.8, 0.8, 0.6, 0.4, 0.25, 0.2]
     null_kp: [4.5, 4.5, 3.0, 1.5, 0.75, 0.45]
     null_kd: [1.2, 1.2, 0.9, 0.6, 0.38, 0.30]
+    # null_kp: [18.0, 18.0, 12.0, 6.0, 3.0, 1.8]
+    # null_kd: [4.8, 4.8, 3.6, 2.4, 1.52, 1.2]
+    qdot_post_max: [0.8, 0.8, 0.6, 0.4, 0.25, 0.2]   # for postural task; separate from main qdot_limit
+    
+
+    
     # null_kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     # null_kd: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     q_home:  [0.0, -0.66, 0.4, 0.0, 0.30, 0.0]
@@ -148,7 +144,7 @@ wb_resolved_rate_controller:
     tip_link:  end_link
     inner_controller: "joint_impedance_controller"
     lambda: 0.03
-    qdot_limit: 1.0
+    qdot_limit: 0.5
     step_limit: 0.2
     dt_ceiling: 0.1
     v_min: 0.002
@@ -157,7 +153,7 @@ wb_resolved_rate_controller:
     tau_rebase: 0.5
     cmd_timeout: 0.25
     v_deadband: 0.0001
-    base_weight: 5.0
+    base_weight: 8.0
     arm_weight: 1.0
     base_cmd_scale: 1.0
 
@@ -277,9 +273,9 @@ wb_qp_controller:
     cbf_activate_h: 0.00
 
     ee:
-      kp_pos: 0.0
+      kp_pos: 2.0
       kd_pos: 0.0
-      kp_rot: 0.0
+      kp_rot: 2.0
       kd_rot: 0.0
 
 

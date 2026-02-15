@@ -14,6 +14,8 @@ SUPPORTED = {
     "geometry_msgs/msg/TwistStamped": "twist",
     "sensor_msgs/msg/JointState": "joint_state",
     "std_msgs/msg/Float64": "float64",
+    "ombot_msgs/msg/WholeBodyCmd": "wb_cmd",
+
 }
 
 
@@ -48,6 +50,14 @@ def open_writer(topic: str, kind: str, joint_names=None):
             w.writerow(header)
     elif kind in ("float32", "float64"):
         w.writerow(["t", "data"])
+    elif kind == "wb_cmd":
+        w.writerow([
+            "t",
+            "bvx","bvy","bwz",
+            "ee_vx","ee_vy","ee_vz",
+            "ee_wx","ee_wy","ee_wz",
+            "valid"
+        ])
     else:
         raise ValueError(f"Unknown kind: {kind}")
 
@@ -122,6 +132,17 @@ while reader.has_next():
         writers[topic].writerow([t, lin.x, lin.y, lin.z, ang.x, ang.y, ang.z])
     elif kind_of[topic] in ("float32", "float64"):
         writers[topic].writerow([t, msg.data])
+    elif kind_of[topic] == "wb_cmd":
+        ee = msg.ee
+        writers[topic].writerow([
+            t,
+            float(msg.bvx), float(msg.bvy), float(msg.bwz),
+            float(ee.linear.x), float(ee.linear.y), float(ee.linear.z),
+            float(ee.angular.x), float(ee.angular.y), float(ee.angular.z),
+            int(msg.valid)
+        ])
+
+
 
     n[topic] += 1
 

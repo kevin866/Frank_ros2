@@ -595,7 +595,17 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
   Eigen::Vector3d vff_ang(cmd_cached_.wx, cmd_cached_.wy, cmd_cached_.wz);
 
   // world <- base rotation
-  Eigen::Matrix3d R_wb = T_wb.linear();
+  // Eigen::Matrix3d R_wb = T_wb.linear();
+  Eigen::Matrix3d R_wb = Eigen::Matrix3d::Identity(); // for now, assume world=base to simplify tuning; you can re-enable this later when you have TF working
+
+  // std::ostringstream oss;
+  // oss << R_wb.format(Eigen::IOFormat(3, 0, ", ", "\n", "[", "]"));
+
+  // RCLCPP_INFO(
+  //   get_node()->get_logger(),
+  //   "R_wb:\n%s",
+  //   oss.str().c_str()
+  // );
 
   // convert commanded vel into world before integrating world position reference
   vff_lin = R_wb * vff_lin;
@@ -634,16 +644,16 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
   // base <- world rotation is transpose if R_wb is orthonormal
   Eigen::Vector3d p_err = R_wb.transpose() * p_err_world;
 
-  RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 500,
-                        "perr=(%.3f %.3f %.3f)",
-                        p_err.x(), p_err.y(), p_err.z()
-                      );
+  // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 500,
+  //                       "perr=(%.3f %.3f %.3f)",
+  //                       p_err.x(), p_err.y(), p_err.z()
+  //                     );
 
-  RCLCPP_INFO_THROTTLE(
-    get_node()->get_logger(), *get_node()->get_clock(), 500,
-    "EE ACT p_cur_world=(%.3f %.3f %.3f)",
-    p_cur_world.x(), p_cur_world.y(), p_cur_world.z()
-  );
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(), *get_node()->get_clock(), 500,
+  //   "EE ACT p_cur_world=(%.3f %.3f %.3f)",
+  //   p_cur_world.x(), p_cur_world.y(), p_cur_world.z()
+  // );
 
   // rotation reference integrate: R_ref <- Exp(w*dt) * R_ref
   const double wx = vff_ang.x(), wy = vff_ang.y(), wz = vff_ang.z();
@@ -718,13 +728,13 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
 
 
 
-  // RCLCPP_INFO_THROTTLE(
-  //   get_node()->get_logger(),
-  //   *get_node()->get_clock(),
-  //   500,
-  //   "ROTERR(trace): angle=%.6f axis=(%.3f %.3f %.3f) rotvec=(%.3f %.3f %.3f)",
-  //   angle, axis.x(), axis.y(), axis.z(), rotvec.x(), rotvec.y(), rotvec.z()
-  // );
+  RCLCPP_INFO_THROTTLE(
+    get_node()->get_logger(),
+    *get_node()->get_clock(),
+    500,
+    "ROTERR(trace): angle=%.6f axis=(%.3f %.3f %.3f) rotvec=(%.3f %.3f %.3f)",
+    angle, axis.x(), axis.y(), axis.z(), rotvec.x(), rotvec.y(), rotvec.z()
+  );
 
 
  
@@ -786,12 +796,12 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
     cmd_cached_.bwz
   );
 
-  RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 500,
-                        "EE vff=(%.3f %.3f %.3f | %.3f %.3f %.3f)  vdes=(%.3f %.3f %.3f | %.3f %.3f %.3f)  perr=(%.3f %.3f %.3f)",
-                        vff_lin.x(), vff_lin.y(), vff_lin.z(), vff_ang.x(), vff_ang.y(), vff_ang.z(),
-                        v(0), v(1), v(2), v(3), v(4), v(5),
-                        p_err.x(), p_err.y(), p_err.z()
-                      );
+  // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 500,
+  //                       "EE vff=(%.3f %.3f %.3f | %.3f %.3f %.3f)  vdes=(%.3f %.3f %.3f | %.3f %.3f %.3f)  perr=(%.3f %.3f %.3f)",
+  //                       vff_lin.x(), vff_lin.y(), vff_lin.z(), vff_ang.x(), vff_ang.y(), vff_ang.z(),
+  //                       v(0), v(1), v(2), v(3), v(4), v(5),
+  //                       p_err.x(), p_err.y(), p_err.z()
+  //                     );
 
 
 
@@ -1094,6 +1104,7 @@ controller_interface::return_type WholeBodyQPController::update_and_write_comman
   //   posture_active ? 1 : 0
   // );
   // command to arm joints
+
   write_refs_to_slots();
   return controller_interface::return_type::OK;
 }

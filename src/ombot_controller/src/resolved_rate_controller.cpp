@@ -490,12 +490,18 @@ ResolvedRateController::update_and_write_commands(
 
       // (optional) keep null bias gentle vs. task
       // ui *= null_scale_;  // e.g., null_scale_ = 0.5
-      ui *= null_scale_adapt;
+      // ui *= null_scale_adapt;
 
       // clamp per-joint null velocity contribution
       ui = std::clamp(ui, -qdot_limit_, qdot_limit_);
       u_posture(i) = ui;
     }
+    RCLCPP_INFO_THROTTLE(
+        get_node()->get_logger(),
+        *get_node()->get_clock(),
+        1000,  // ms
+        "Nullspace: ||e||=%.4f  ||u_posture||=%.4f  adapt=%.3f",
+        e.norm(), u_posture.norm(), null_scale_adapt);
   
     // Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n", "[", "]");
     
@@ -507,8 +513,8 @@ ResolvedRateController::update_and_write_commands(
 
 
     // add projected nullspace motion
-    // qdot += Nproj * u_posture;
-    // qdot += u_posture;
+    qdot += Nproj * u_posture;
+    qdot += u_posture;
   }
 
 

@@ -18,7 +18,6 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     bag_prefix   = LaunchConfiguration('bag_prefix',   default='ombot_run')
     storage      = LaunchConfiguration('storage',      default='sqlite3')
-    compress     = LaunchConfiguration('compress',     default='zstd')
     qos_path     = LaunchConfiguration(
         'qos_overrides',
         default='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'
@@ -60,6 +59,34 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description_content}, ctrl_yaml],
     )
 
+    optitrack_tf = Node(
+        package="ombot_coordination",
+        executable="optitrack_tf_pub",
+        output="screen",
+        parameters=[{
+            "pose_topic": "/vrpn_mocap/RigidBody_1/pose",
+            "world_frame": "world",
+            "base_frame": "base_link",
+            "use_planar": True,
+            "axis_fix": "xzy",
+            "yaw_offset": 0.0,
+            "alpha_pos": 0.2,
+            "alpha_yaw": 0.2,
+        }]
+    )
+
+    goal_commander = Node(
+        package="ombot_coordination",
+        executable="goal_commander",
+        output="screen",
+        parameters=[{
+            "world_frame": "world",
+            "topic": "/goal_pose",
+            "rate_hz": 5.0,
+            'goal': "1.0 0.5 0.475 0.0",
+        }]
+    )
+
     # --- Controllers (spawn chain) ---
     jsb = Node(
         package='controller_manager', executable='spawner',
@@ -76,6 +103,7 @@ def generate_launch_description():
     wb_rr = Node(
         package='controller_manager', executable='spawner',
         arguments=['resolved_rate_controller', '--activate', '-c', '/controller_manager'],
+        parameters=[ctrl_yaml],
         output='screen'
     )
 
@@ -85,19 +113,18 @@ def generate_launch_description():
         output='screen'
     )
 
-    goal_from_offset = Node(
-        package='ombot_coordination',
-        executable='goal_from_base_offset_latched',
-        name='goal_from_base_offset_latched',
-        output='screen',
-        parameters=[{
-            'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
-            'goal_pose_topic': '/goal_pose',
-            'offset_xyz': [1.5, 0.0, 0.0],   # set your desired offset here (world frame)
-            'home_position': [0.4, 0.00, 0.45],
-            'latch': True,                   # True = latch once, False = follow base
-        }]
-    )
+    # goal_from_offset = Node(
+    #     package='ombot_coordination',
+    #     executable='goal_from_base_offset_latched',
+    #     name='goal_from_base_offset_latched',
+    #     output='screen',
+    #     parameters=[{
+    #         'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
+    #         'goal_pose_topic': '/goal_pose',
+    #         'offset_xyz': [1.0, 0.0, 0.0],   # set your desired offset here (world frame)
+    #         'latch': True,                   # True = latch once, False = follow base
+    #     }]
+    # )
 
 
     # Chain: JSB -> Impedance -> WholeBodyResolvedRate
@@ -108,61 +135,47 @@ def generate_launch_description():
         OnProcessExit(target_action=imp, on_exit=[wb_rr])
     )
 
-    # --- Split commander (Python) ---
-    # Publishes:
-    #   - desired EE twist -> wb_resolved_rate_controller/ee_twist
-    #   - base cmd_vel     -> mecanum controller (via /cmd_vel or your topic)
-    split_commander = Node(
-        package='ombot_coordination',
-        executable='split_commander',
-        name='split_commander',
-        output='screen',
+    # --- Whole-body task commander (Python) ---
+    # This node just publishes desired EE twist in base_link frame
+    wb_task_commander = Node(
+        package="ombot_coordination",
+        executable="whole_body_task_commander",
+        name="whole_body_task_commander",
+        output="screen",
         parameters=[{
-            # Inputs
-            'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
-            'ee_pose_topic':   '/ee_pose',
-            'goal_pose_topic': '/goal_pose',
+            # Frames for TF lookup
+            "world_frame": "world",
+            "base_frame": "base_link",
 
-            # Outputs
-            'ee_twist_topic':  '/resolved_rate_controller/ee_twist',
-            'base_cmd_topic':  '/mecanum_controller/reference',  # CHANGE if your base expects something else
+            # Poses
+            # IMPORTANT: /ee_pose should be in base_link (FK output). If it's in world, you'll need to transform it too.
+            "ee_pose_topic":   "/ee_pose",
+            "goal_pose_topic": "/goal_pose",
 
-            # Option B gains
-            'k1': 1.5,
-            # 'k2': 1.5,
-            'k3': 1.5,
-            'k1d': 0.5,
-            # 'k2d': 0.2,
-            'k3d': 0.2,
-            # 'k1': 0.0,
-            'k2': 0.0,
-            # 'k3': 0.0,
-            # 'k1d': 0.0,
-            'k2d': 0.0,
-            # 'k3d': 0.0,
-            # Stow point in base frame (set this!)
-            'stow_point_b': [0.25, 0.00, 0.45],
+            # Optional trajectory refs (keep if you're using them)
+            "use_traj": True,
+            # (These are hardcoded in your code right now as /ee_desired_pose and /ee_desired_twist.
+            #  If you later parameterize them, add them here.)
 
-            # Arm PD (keep simple)
-            'kp_pos': 1.0,
-            'kp_rot': 0.0,   # start simple: no orientation
-            'kd_pos': 0.0,
-            'kd_rot': 0.0,
+            # Twist out -> must match controller's "~ee_twist" topic expansion
+            "ee_twist_topic": "/resolved_rate_controller/ee_twist",
 
-            # Arm twist caps
-            'max_lin': 0.2,
-            'max_ang': 0.7,
+            # Gains
+            "kp_pos": 0.3,
+            "kp_rot": 0.0,   # consider 0.0 initially until frames are verified
+            "kd_pos": 0.02,
+            "kd_rot": 0.00,
 
-            # Base caps
-            'max_base_lin': 0.2,
-            'max_base_ang': 0.2,
-        }]
+            # Velocity caps (real robot: start smaller)
+            "max_lin": 0.8,  # m/s (suggested safer start than 1.0)
+            "max_ang": 0.3,  # rad/s
+            }],
     )
 
-    
-    # Start commander only after wb_resolved_rate_controller is active
+
+    # Start commander only after resolved_rate_controller is active
     start_commander_after_wb = RegisterEventHandler(
-        OnProcessExit(target_action=wb_rr, on_exit=[split_commander])
+        OnProcessExit(target_action=wb_rr, on_exit=[wb_task_commander])
     )
 
     # --- rosbag2 recorder ---
@@ -173,15 +186,14 @@ def generate_launch_description():
         '/vrpn_mocap/RigidBody_2/pose',
         '/goal_pose',
         '/joint_states',
-        '/ee_pose'
+        '/ee_pose',
+        '/manipulability', 
     ]
 
     bag_cmd_final = [
         'ros2', 'bag', 'record', *topics_to_record,
         '--output', LaunchConfiguration('bag_prefix'),
         '--storage', LaunchConfiguration('storage'),
-        '--compression-mode', 'file',
-        '--compression-format', LaunchConfiguration('compress'),
         '--max-bag-size', LaunchConfiguration('max_bag_size'),
         '--max-bag-duration', LaunchConfiguration('max_bag_secs'),
         '--qos-profile-overrides-path', LaunchConfiguration('qos_overrides')
@@ -207,7 +219,6 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time',  default_value='false'),
         DeclareLaunchArgument('bag_prefix',    default_value='ombot_run1'),
         DeclareLaunchArgument('storage',       default_value='sqlite3'),
-        DeclareLaunchArgument('compress',      default_value='zstd'),
         DeclareLaunchArgument(
             'qos_overrides',
             default_value='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'
@@ -219,13 +230,16 @@ def generate_launch_description():
         robot_state_publisher,
         control_node,
 
+        optitrack_tf,
+        goal_commander,
+
         # Controllers: mecanum can start anytime; chain the arm controllers
         mecanum_spawner,
         jsb,
         chain_imp_after_jsb,
         chain_wb_after_imp,
 
-        goal_from_offset,
+        # goal_from_offset,
 
         # Start commander + bag once WB controller is active
         start_commander_after_wb,

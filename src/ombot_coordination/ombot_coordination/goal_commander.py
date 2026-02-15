@@ -47,13 +47,13 @@ class GoalCommander(Node):
                 qx, qy, qz, qw = yaw_to_quat(yaw)
 
                 self.goal.header.stamp = self.get_clock().now().to_msg()
-                self.goal.pose.position.x = x
-                self.goal.pose.position.y = y
+                self.goal.pose.position.x = x - 0.22
+                self.goal.pose.position.y = y - 0.32
                 self.goal.pose.position.z = z
-                self.goal.pose.orientation.x = qx
-                self.goal.pose.orientation.y = qy
-                self.goal.pose.orientation.z = qz
-                self.goal.pose.orientation.w = qw
+                self.goal.pose.orientation.x = 0.0
+                self.goal.pose.orientation.y = 0.0
+                self.goal.pose.orientation.z = 0.0
+                self.goal.pose.orientation.w = 0.0
 
                 self.have_goal = True
             except Exception as e:
@@ -79,7 +79,7 @@ class GoalCommander(Node):
 
             base_goal.pose.orientation = self.goal.pose.orientation
 
-            self.base_pub.publish(base_goal)
+            # self.base_pub.publish(base_goal)
 
 
 def main():

@@ -91,6 +91,8 @@ private:
 
   // double null_kp_{0.2};        // posture bias (0 disables)
   std::vector<double> q_home_; // desired home posture for nullspace
+  std::vector<double> qdot_post_max_; // desired home posture for nullspace
+
   std::string inner_ctrl_name_;
   // Map from joint index -> command_interfaces_ index for each type (or -1 if not present)
   std::vector<int> pos_cmd_index_;
