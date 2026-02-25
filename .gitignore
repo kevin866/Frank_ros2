@@ -24,3 +24,10 @@ CMakeCache.txt
 Thumbs.db
 
 
+ombot_run1
+# rosbag / logs
+ombot_run1/
+**/*.db3
+**/*.db3-wal
+**/*.db3-shm
+**/rosbag2_*/
