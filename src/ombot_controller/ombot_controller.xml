@@ -49,6 +49,21 @@
       base_class_type="controller_interface::ChainableControllerInterface">
       <description>Cartesian-space impedance controller</description>
   </class>
-  
+
+  <class
+    name="ombot_controller/JointVelocityExcitationController"
+    type="ombot_controller::JointVelocityExcitationController"
+    base_class_type="controller_interface::ControllerInterface">
+    <description>Joint velocity excitation controller (PRBS/sine/chirp)</description>
+  </class>
+
+
+  <class
+    name="ombot_controller/JointFrictionCalibController"
+    type="ombot_controller::JointFrictionCalibController"
+    base_class_type="controller_interface::ControllerInterface">
+    <description>Joint friction calibration controller</description>
+  </class>
+
 
 </library>

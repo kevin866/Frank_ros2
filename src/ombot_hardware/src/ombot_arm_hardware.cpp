@@ -19,6 +19,110 @@ static ombot_hardware::CommandMode parse_mode(std::string s) {
   return ombot_hardware::CommandMode::Position; // default
 }
 
+hardware_interface::return_type
+OMBotArmSystem::prepare_command_mode_switch(
+  const std::vector<std::string> & start_interfaces,
+  const std::vector<std::string> & /*stop_interfaces*/)
+{
+  // Default: keep current mode unless a new interface asks otherwise
+  requested_mode_ = command_mode_;
+
+  for (const auto & key : start_interfaces) {
+    const auto slash = key.find('/');
+    if (slash == std::string::npos) continue;
+
+    const std::string jname  = key.substr(0, slash);
+    const std::string ifname = key.substr(slash + 1);
+
+    const int idx = joint_index_from_name(jname);
+    if (idx < 0) continue;
+
+    if (ifname == hardware_interface::HW_IF_VELOCITY) {
+      requested_mode_[idx] = CommandMode::Velocity;
+    } else if (ifname == hardware_interface::HW_IF_EFFORT) {
+      requested_mode_[idx] = CommandMode::Effort;
+    } else if (ifname == hardware_interface::HW_IF_POSITION) {
+      requested_mode_[idx] = CommandMode::Position;
+    }
+  }
+
+  // Light log (don’t spam)
+  RCLCPP_INFO(rclcpp::get_logger("OMBotArmSystem"),
+              "prepare_command_mode_switch: requested modes set (first joint=%d)",
+              requested_mode_.empty() ? -1 : (int)requested_mode_[0]);
+
+  return hardware_interface::return_type::OK;
+}
+
+hardware_interface::return_type
+OMBotArmSystem::perform_command_mode_switch(
+  const std::vector<std::string> & /*start_interfaces*/,
+  const std::vector<std::string> & /*stop_interfaces*/)
+{
+  // If not connected yet, just update bookkeeping
+  if (!hw_connected_) {
+    command_mode_ = requested_mode_;
+  } else {
+    for (size_t i = 0; i < ids_.size(); ++i) {
+      if (requested_mode_[i] == command_mode_[i]) continue;
+
+      const uint8_t id = ids_[i];
+      uint8_t dxl_error = 0;
+
+      // 1) torque disable
+      packetHandler_->write1ByteTxRx(portHandler_, id, ADDR_TORQUE_ENABLE, 0, &dxl_error);
+
+      // 2) set operating mode
+      const uint8_t mode = dxlOpModeFor(requested_mode_[i]); // your helper: Effort/Vel/Pos -> DXL op mode byte
+      packetHandler_->write1ByteTxRx(portHandler_, id, ADDR_OPERATING_MODE, mode, &dxl_error);
+
+      // 3) torque enable
+      packetHandler_->write1ByteTxRx(portHandler_, id, ADDR_TORQUE_ENABLE, 1, &dxl_error);
+
+      // 4) update local mode
+      command_mode_[i] = requested_mode_[i];
+
+      RCLCPP_INFO(rclcpp::get_logger("OMBotArmSystem"),
+                  "Switched %s (id=%u) to mode=%d (dxl_op=%u)",
+                  joint_names_[i].c_str(), id, (int)command_mode_[i], (unsigned)mode);
+    }
+  }
+
+  // Recompute flags EVERY time
+  any_position_mode_ = std::any_of(command_mode_.begin(), command_mode_.end(),
+                                   [](auto m){return m==CommandMode::Position;});
+  any_velocity_mode_ = std::any_of(command_mode_.begin(), command_mode_.end(),
+                                   [](auto m){return m==CommandMode::Velocity;});
+  any_effort_mode_   = std::any_of(command_mode_.begin(), command_mode_.end(),
+                                   [](auto m){return m==CommandMode::Effort;});
+
+  // Recreate sync writers to match new modes (simple + safe)
+  sync_write_goal_pos_.reset();
+  sync_write_goal_vel_.reset();
+  sync_write_goal_cur_.reset();
+
+  if (hw_connected_) {
+    if (any_position_mode_)
+      sync_write_goal_pos_ = std::make_unique<dynamixel::GroupSyncWrite>(portHandler_, packetHandler_, ADDR_GOAL_POSITION, 4);
+    if (any_velocity_mode_)
+      sync_write_goal_vel_ = std::make_unique<dynamixel::GroupSyncWrite>(portHandler_, packetHandler_, ADDR_GOAL_VELOCITY, 4);
+    if (any_effort_mode_)
+      sync_write_goal_cur_ = std::make_unique<dynamixel::GroupSyncWrite>(portHandler_, packetHandler_, ADDR_GOAL_CURRENT, 2);
+  }
+
+  // Optional: clear commands so you don’t “jump” after switching
+  std::fill(joint_position_cmd_.begin(), joint_position_cmd_.end(), 0.0);
+  std::fill(joint_velocity_cmd_.begin(), joint_velocity_cmd_.end(), 0.0);
+  std::fill(joint_effort_cmd_.begin(),   joint_effort_cmd_.end(),   0.0);
+
+  RCLCPP_INFO(rclcpp::get_logger("OMBotArmSystem"),
+              "perform_command_mode_switch done: any_vel=%d any_eff=%d any_pos=%d",
+              (int)any_velocity_mode_, (int)any_effort_mode_, (int)any_position_mode_);
+
+  return hardware_interface::return_type::OK;
+}
+
+
 
 CallbackReturn OMBotArmSystem::on_init(const hardware_interface::HardwareInfo& info) {
   if (SystemInterface::on_init(info) != CallbackReturn::SUCCESS)
@@ -29,7 +133,6 @@ CallbackReturn OMBotArmSystem::on_init(const hardware_interface::HardwareInfo& i
   if (auto it = info_.hardware_parameters.find("simulate"); it != info_.hardware_parameters.end()) {
     simulate_ = (it->second == "true" || it->second == "1");
   }
-
 
   // ---- Params (just read; don't open hardware here) ----
   if (auto it = info_.hardware_parameters.find("port"); it != info_.hardware_parameters.end())
@@ -75,6 +178,9 @@ CallbackReturn OMBotArmSystem::on_init(const hardware_interface::HardwareInfo& i
     std::stringstream ss(it->second); std::string tok; size_t i=0;
     while (std::getline(ss, tok, ',') && i<N) command_mode_[i++] = parse_mode(tok);
   }
+
+  requested_mode_ = command_mode_;  // start requested == current
+
   any_position_mode_ = std::any_of(command_mode_.begin(), command_mode_.end(),
                                    [](auto m){return m==CommandMode::Position;});
   any_velocity_mode_ = std::any_of(command_mode_.begin(), command_mode_.end(),
@@ -135,8 +241,18 @@ OMBotArmSystem::on_activate(const rclcpp_lifecycle::State&) {
   for (size_t i=0; i<ids_.size(); ++i) {
     uint8_t dxl_error = 0;
     const uint8_t mode = dxlOpModeFor(command_mode_[i]); // 0=current,1=vel,3=pos
-    packetHandler_->write1ByteTxRx(portHandler_, ids_[i], ADDR_OPERATING_MODE, mode, &dxl_error);
-    packetHandler_->write1ByteTxRx(portHandler_, ids_[i], ADDR_TORQUE_ENABLE, 1,    &dxl_error);
+    // packetHandler_->write1ByteTxRx(portHandler_, ids_[i], ADDR_OPERATING_MODE, mode, &dxl_error);
+    // packetHandler_->write1ByteTxRx(portHandler_, ids_[i], ADDR_TORQUE_ENABLE, 1,    &dxl_error);
+
+    int rc = packetHandler_->write1ByteTxRx(portHandler_, ids_[i], ADDR_OPERATING_MODE, mode, &dxl_error);
+    if (rc != COMM_SUCCESS || dxl_error != 0) {
+      RCLCPP_WARN(rclcpp::get_logger("OMBotArmSystem"), "Set op mode failed id=%u rc=%d err=%u", ids_[i], rc, dxl_error);
+    }
+
+    rc = packetHandler_->write1ByteTxRx(portHandler_, ids_[i], ADDR_TORQUE_ENABLE, 1, &dxl_error);
+    if (rc != COMM_SUCCESS || dxl_error != 0) {
+      RCLCPP_WARN(rclcpp::get_logger("OMBotArmSystem"), "Torque enable failed id=%u rc=%d err=%u", ids_[i], rc, dxl_error);
+    }
   }
 
   // Create writers based on modes
@@ -169,10 +285,14 @@ OMBotArmSystem::on_activate(const rclcpp_lifecycle::State&) {
   }
 
 
+
+
+
   RCLCPP_INFO(rclcpp::get_logger("OMBotArmSystem"), "Activate OK: %zu servos alive", ids_.size());
   is_ready_ = true;
 
   std::fill(joint_position_cmd_.begin(), joint_position_cmd_.end(), 0.0);
+  std::fill(joint_velocity_cmd_.begin(), joint_velocity_cmd_.end(), 0.0);
   std::fill(joint_effort_cmd_.begin(),   joint_effort_cmd_.end(),   0.0);
 
 
@@ -202,7 +322,7 @@ std::vector<StateInterface> OMBotArmSystem::export_state_interfaces() {
   for (size_t i = 0; i < joint_names_.size(); ++i) {
     out.emplace_back(joint_names_[i], hardware_interface::HW_IF_POSITION, &joint_position_[i]);
     out.emplace_back(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &joint_velocity_[i]);
-    out.emplace_back(joint_names_[i], hardware_interface::HW_IF_EFFORT, &joint_effort_cmd_[i]);
+    out.emplace_back(joint_names_[i], hardware_interface::HW_IF_EFFORT, &joint_effort_[i]);
   }
   // sensor states
   out.emplace_back("tcp_fts_sensor","force.x",&ft_states_[0]);
@@ -218,11 +338,20 @@ std::vector<CommandInterface> OMBotArmSystem::export_command_interfaces() {
   std::vector<CommandInterface> out;
   for (size_t i = 0; i < joint_names_.size(); ++i) {
     out.emplace_back(joint_names_[i], hardware_interface::HW_IF_POSITION, &joint_position_cmd_[i]);
+    out.emplace_back(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &joint_velocity_cmd_[i]);
     out.emplace_back(joint_names_[i], hardware_interface::HW_IF_EFFORT, &joint_effort_cmd_[i]);
-
   }
   return out;
 }
+
+int OMBotArmSystem::joint_index_from_name(const std::string & name) const
+{
+  for (size_t i = 0; i < joint_names_.size(); ++i) {
+    if (joint_names_[i] == name) return static_cast<int>(i);
+  }
+  return -1;
+}
+
 
 return_type OMBotArmSystem::read(const rclcpp::Time&, const rclcpp::Duration& period) {
 
@@ -395,6 +524,7 @@ return_type OMBotArmSystem::write(const rclcpp::Time&, const rclcpp::Duration&) 
     }
   }
 
+
   // Velocity mode
   if (any_velocity_mode_) {
     sync_write_goal_vel_->clearParam();
@@ -408,14 +538,27 @@ return_type OMBotArmSystem::write(const rclcpp::Time&, const rclcpp::Duration&) 
         static_cast<uint8_t>((vu >> 24) & 0xFF)
       };
       if (!sync_write_goal_vel_->addParam(ids_[i], param)) ok = false;
-    }
-    if (ok) {
-      // const int res = sync_write_goal_vel_->txPacket();
-      // if (res != COMM_SUCCESS) {
-      //   RCLCPP_WARN(rclcpp::get_logger("OMBotArmSystem"),
-      //               "sync write goal velocity failed: %s", packetHandler_->getTxRxResult(res));
-      //   ok = false;
+
+      // if (std::abs(joint_velocity_cmd_[i]) > 1e-3) {
+      //   RCLCPP_INFO_THROTTLE(
+      //     rclcpp::get_logger("OMBotArmSystem"), *log_clock_, 1000,
+      //     "id=%d cmd=%.3f rad/s -> vu=%d",
+      //     (int)ids_[i], joint_velocity_cmd_[i], (int)vu);
       // }
+    }
+    
+    if (ok) {
+      const int res = sync_write_goal_vel_->txPacket();
+      if (res != COMM_SUCCESS) {
+        RCLCPP_WARN(rclcpp::get_logger("OMBotArmSystem"),
+                    "sync write goal velocity failed: %s", packetHandler_->getTxRxResult(res));
+        ok = false;
+      }
+
+      // RCLCPP_INFO_THROTTLE(
+      //   rclcpp::get_logger("OMBotArmSystem"), *log_clock_, 1000,
+      //   "goal_vel txPacket ok=%d", (int)ok);
+
     }
   }
   // RCLCPP_INFO_THROTTLE(rclcpp::get_logger("OMBotArmSystem"), *log_clock_, 1000,
@@ -423,6 +566,23 @@ return_type OMBotArmSystem::write(const rclcpp::Time&, const rclcpp::Duration&) 
   // (int)any_effort_mode_, (int)command_mode_[0], (int)command_mode_[1],
   // (int)command_mode_[2], (int)command_mode_[3], (int)command_mode_[4],
   // (int)command_mode_[5]);
+
+  // RCLCPP_INFO_THROTTLE(
+  // rclcpp::get_logger("OMBotArmSystem"), *log_clock_, 1000,
+  // "any_vel=%d  vel_cmd=[%.3f %.3f %.3f %.3f %.3f %.3f]",
+  // (int)any_velocity_mode_,
+  // joint_velocity_cmd_[0], joint_velocity_cmd_[1], joint_velocity_cmd_[2],
+  // joint_velocity_cmd_[3], joint_velocity_cmd_[4], joint_velocity_cmd_[5]);
+
+
+
+  // RCLCPP_INFO_THROTTLE(
+  //   rclcpp::get_logger("OMBotArmSystem"),
+  //   *log_clock_,
+  //   1000,  // ms
+  //   "VEL block: any_velocity_mode_=%d",
+  //   (int)any_velocity_mode_);
+
 
 
   // Effort (current) mode

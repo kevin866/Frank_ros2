@@ -42,6 +42,8 @@ add_library(${PROJECT_NAME} SHARED
   src/wb_resolved_rate_controller.cpp
   src/wb_qp_controller.cpp
   src/cartesian_impedance_controller.cpp
+  src/joint_velocity_excitation_controller.cpp
+  src/joint_friction_calib_controller.cpp
 
 )
 # target_include_directories(${PROJECT_NAME} PUBLIC

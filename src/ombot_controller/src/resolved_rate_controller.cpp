@@ -442,7 +442,7 @@ ResolvedRateController::update_and_write_commands(
     
   // RCLCPP_INFO_THROTTLE(get_node()->get_logger(),            
   //     *get_node()->get_clock(),           
-  //     1000,
+  //     10,
   //   "age=%.3fs timed_out=%d valid=%d vnorm=%.4f",
   //   (now - last_cmd_time_).seconds(), timed_out, int(cmd_cached_.valid), v.norm());
 
@@ -454,26 +454,28 @@ ResolvedRateController::update_and_write_commands(
   auto solver = A.ldlt();
   Eigen::VectorXd qdot = Je.transpose() * solver.solve(v);  // robust solve
 
-  double task_mag = qdot.norm();
+  double task_mag = qdot.norm();          // your task-only velocity
+  double task_mag_n = task_mag / 1.0; // normalize
+  task_mag_n = std::clamp(task_mag_n, 0.0, 1.0);
 
-  task_mag = std::clamp(task_mag, 0.0, 1.0);
+  double w = std::pow(1.0 - task_mag_n, 3.0);  // 0..1
 
-  double null_scale_adapt = 20.0 * std::pow(1.0 - task_mag, 3.0);
+  double null_scale_adapt = 0.0 + (1.0 - 0.0) * w; // e.g. 0..1
+
+  RCLCPP_INFO_THROTTLE(
+      get_node()->get_logger(),
+      *get_node()->get_clock(),
+      500,  // ms
+      "TASK: ||qdot||=%.4f  norm=%.4f  w=%.4f  null_scale=%.4f",
+      task_mag,
+      task_mag_n,
+      w,
+      null_scale_adapt
+  );
+
 
   // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
   //   "||qdot||=%.3f  qdot[0]=%.3f  dt=%.3f  step_limit=%.3f", qdot.norm(), qdot(0), dt, step_limit_);
-
-
-
-
-  // 6) Nullspace posture bias: qdot += N * (K * e)
-  // if (posture_active) {
-  //   Eigen::MatrixXd I   = Eigen::MatrixXd::Identity(N, N);
-  //   Eigen::MatrixXd Nproj = I - Je.transpose() * solver.solve(Je);  // null projector
-  //   Eigen::VectorXd e(N);
-  //   for (size_t i = 0; i < N; ++i) e(i) = q_home_[i] - q_kdl_(i);
-  //   qdot += null_kp_ * (Nproj * e);
-  // }
 
   // 6) Nullspace posture bias: qdot += Nproj * u_posture
   if (posture_active) {
@@ -490,18 +492,18 @@ ResolvedRateController::update_and_write_commands(
 
       // (optional) keep null bias gentle vs. task
       // ui *= null_scale_;  // e.g., null_scale_ = 0.5
-      // ui *= null_scale_adapt;
+      ui *= null_scale_adapt;
 
       // clamp per-joint null velocity contribution
       ui = std::clamp(ui, -qdot_limit_, qdot_limit_);
       u_posture(i) = ui;
     }
-    RCLCPP_INFO_THROTTLE(
-        get_node()->get_logger(),
-        *get_node()->get_clock(),
-        1000,  // ms
-        "Nullspace: ||e||=%.4f  ||u_posture||=%.4f  adapt=%.3f",
-        e.norm(), u_posture.norm(), null_scale_adapt);
+    // RCLCPP_INFO_THROTTLE(
+    //     get_node()->get_logger(),
+    //     *get_node()->get_clock(),
+    //     1000,  // ms
+    //     "Nullspace: ||e||=%.4f  ||u_posture||=%.4f  adapt=%.3f, task_mag=%.3f",
+    //     e.norm(), u_posture.norm(), null_scale_adapt, task_mag);
   
     // Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n", "[", "]");
     
@@ -513,7 +515,7 @@ ResolvedRateController::update_and_write_commands(
 
 
     // add projected nullspace motion
-    qdot += Nproj * u_posture;
+    // qdot += Nproj * u_posture;
     qdot += u_posture;
   }
 

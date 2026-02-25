@@ -106,6 +106,13 @@ public:
   hardware_interface::return_type write(
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
+  hardware_interface::return_type prepare_command_mode_switch(
+    const std::vector<std::string> & start_interfaces,
+    const std::vector<std::string> & stop_interfaces) override;
+
+  hardware_interface::return_type perform_command_mode_switch(
+    const std::vector<std::string> & start_interfaces,
+    const std::vector<std::string> & stop_interfaces) override;
 
 
 private:
@@ -150,10 +157,15 @@ private:
 
   // Command modes
   std::vector<CommandMode> command_mode_;
+  std::vector<CommandMode> requested_mode_;  // desired mode after switch
   bool any_position_mode_{false}, any_velocity_mode_{false}, any_effort_mode_{false};
+
+  int joint_index_from_name(const std::string & name) const;
 
   // Command buffers (if you use them)
   std::vector<double> joint_position_cmd_, joint_velocity_cmd_, joint_effort_cmd_;
+
+  
 
   // State buffers (you already had position/velocity; add effort)
   std::vector<double> joint_position_, joint_velocity_, joint_effort_;

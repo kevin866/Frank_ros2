@@ -18,7 +18,6 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     bag_prefix   = LaunchConfiguration('bag_prefix',   default='ombot_run')
     storage      = LaunchConfiguration('storage',      default='sqlite3')
-    compress     = LaunchConfiguration('compress',     default='zstd')
     qos_path     = LaunchConfiguration(
         'qos_overrides',
         default='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'
@@ -93,8 +92,8 @@ def generate_launch_description():
         parameters=[{
             'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
             'goal_pose_topic': '/goal_pose',
-            'offset_xyz': [1.5, 0.0, 0.0],   # set your desired offset here (world frame)
-            'home_position': [0.4, 0.00, 0.45],
+            'offset_xyz': [1.0, 0.0, 0.0],   # set your desired offset here (world frame)
+            'home_position': [0.246, 0.00, 0.485],
             'latch': True,                   # True = latch once, False = follow base
         }]
     )
@@ -131,9 +130,9 @@ def generate_launch_description():
             'k1': 1.5,
             # 'k2': 1.5,
             'k3': 1.5,
-            'k1d': 0.5,
+            'k1d': 0.0,
             # 'k2d': 0.2,
-            'k3d': 0.2,
+            'k3d': 0.1,
             # 'k1': 0.0,
             'k2': 0.0,
             # 'k3': 0.0,
@@ -141,7 +140,7 @@ def generate_launch_description():
             'k2d': 0.0,
             # 'k3d': 0.0,
             # Stow point in base frame (set this!)
-            'stow_point_b': [0.25, 0.00, 0.45],
+            'stow_point_b': [0.246, 0.00, 0.485],
 
             # Arm PD (keep simple)
             'kp_pos': 1.0,
@@ -173,15 +172,18 @@ def generate_launch_description():
         '/vrpn_mocap/RigidBody_2/pose',
         '/goal_pose',
         '/joint_states',
-        '/ee_pose'
+        '/ee_pose',
+        '/debug/e1', 
+        '/debug/e2',
+        '/debug/e3'
     ]
 
     bag_cmd_final = [
         'ros2', 'bag', 'record', *topics_to_record,
         '--output', LaunchConfiguration('bag_prefix'),
         '--storage', LaunchConfiguration('storage'),
-        '--compression-mode', 'file',
-        '--compression-format', LaunchConfiguration('compress'),
+        # '--compression-mode', 'file',
+        # '--compression-format', LaunchConfiguration('compress'),
         '--max-bag-size', LaunchConfiguration('max_bag_size'),
         '--max-bag-duration', LaunchConfiguration('max_bag_secs'),
         '--qos-profile-overrides-path', LaunchConfiguration('qos_overrides')
@@ -207,7 +209,7 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time',  default_value='false'),
         DeclareLaunchArgument('bag_prefix',    default_value='ombot_run1'),
         DeclareLaunchArgument('storage',       default_value='sqlite3'),
-        DeclareLaunchArgument('compress',      default_value='zstd'),
+        # DeclareLaunchArgument('compress',      default_value='zstd'),
         DeclareLaunchArgument(
             'qos_overrides',
             default_value='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'
