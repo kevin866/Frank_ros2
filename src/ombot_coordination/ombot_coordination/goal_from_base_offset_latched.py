@@ -52,6 +52,9 @@ class GoalFromOffset(Node):
             dtype=float,
         )
         self.rate_hz = self.declare_parameter('publish_rate_hz', 20.0).value
+        
+        self.base_pose_topic= self.declare_parameter('base_pose_topic','/vrpn_mocap/RigidBody_1/pose').get_parameter_value().string_value
+
 
         # Fixed rotation: world -> base
         self.R_wb = np.array([
@@ -73,7 +76,7 @@ class GoalFromOffset(Node):
         # Subscribers
         self.sub_base = self.create_subscription(
             PoseStamped,
-            '/vrpn_mocap/RigidBody_1/pose',
+            self.base_pose_topic,
             self.base_cb,
             qos,
         )

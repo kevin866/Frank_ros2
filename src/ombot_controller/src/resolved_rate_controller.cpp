@@ -29,6 +29,8 @@ controller_interface::CallbackReturn ResolvedRateController::on_init() {
     auto_declare<double>("v_min", 0.03);
     auto_declare<std::string>("twist_frame", "link_1");
     auto_declare<double>("tau_rebase", tau_rebase_);
+    auto_declare<std::vector<double>>("q_min", {});
+    auto_declare<std::vector<double>>("q_max", {});
 
   } catch (...) { return CallbackReturn::ERROR; }
   return CallbackReturn::SUCCESS;
@@ -50,7 +52,9 @@ ResolvedRateController::on_configure(const rclcpp_lifecycle::State &) {
   tip_link_  = get_node()->get_parameter("tip_link").as_string();
   lambda_    = get_node()->get_parameter("lambda").as_double();
   qdot_limit_= get_node()->get_parameter("qdot_limit").as_double();
-  // null_kp_   = get_node()->get_parameter("null_kp").as_double();
+  q_min_ = get_node()->get_parameter("q_min").as_double_array();
+  q_max_ = get_node()->get_parameter("q_max").as_double_array();
+   // null_kp_   = get_node()->get_parameter("null_kp").as_double();
   // null_kp_ = get_node()->get_parameter("null_kp").as_double_array();
   // null_kd_ = get_node()->get_parameter("null_kd").as_double_array();
   q_home_    = get_node()->get_parameter("q_home").as_double_array();
@@ -114,6 +118,24 @@ ResolvedRateController::on_configure(const rclcpp_lifecycle::State &) {
   sub_twist_ = get_node()->create_subscription<geometry_msgs::msg::TwistStamped>(
       "~/ee_twist", rclcpp::SystemDefaultsQoS(),
       std::bind(&ResolvedRateController::twist_cb, this, std::placeholders::_1));
+
+  sub_e1_ = get_node()->create_subscription<geometry_msgs::msg::Vector3Stamped>(
+    "/debug/e1",
+    rclcpp::SystemDefaultsQoS(),
+    [this](const geometry_msgs::msg::Vector3Stamped::SharedPtr msg)
+    {
+      const double x = msg->vector.x;
+      const double y = msg->vector.y;
+      const double z = msg->vector.z;
+
+      const double n = std::sqrt(x*x + y*y + z*z);
+
+      std::lock_guard<std::mutex> lk(e1_mtx_);
+      e1_norm_ = n;
+      e1_stamp_ = msg->header.stamp;
+      have_e1_ = true;
+    }
+  );
 
   // pre-size integrators
   q_ref_.assign(joint_names_.size(), 0.0);
@@ -454,23 +476,60 @@ ResolvedRateController::update_and_write_commands(
   auto solver = A.ldlt();
   Eigen::VectorXd qdot = Je.transpose() * solver.solve(v);  // robust solve
 
-  double task_mag = qdot.norm();          // your task-only velocity
-  double task_mag_n = task_mag / 1.0; // normalize
-  task_mag_n = std::clamp(task_mag_n, 0.0, 1.0);
+  // double task_mag = qdot.norm();          // your task-only velocity
+  // double task_mag_n = task_mag / 1.0; // normalize
+  // task_mag_n = std::clamp(task_mag_n, 0.0, 1.0);
 
-  double w = std::pow(1.0 - task_mag_n, 3.0);  // 0..1
+  // double w = std::pow(1.0 - task_mag_n, 3.0);  // 0..1
 
-  double null_scale_adapt = 0.0 + (1.0 - 0.0) * w; // e.g. 0..1
+  // double null_scale_adapt = 0.0 + (1.0 - 0.0) * w; // e.g. 0..1
+
+  // RCLCPP_INFO_THROTTLE(
+  //     get_node()->get_logger(),
+  //     *get_node()->get_clock(),
+  //     500,  // ms
+  //     "TASK: ||qdot||=%.4f  norm=%.4f  w=%.4f  null_scale=%.4f",
+  //     task_mag,
+  //     task_mag_n,
+  //     w,
+  //     null_scale_adapt
+  // );
+
+
+  double e1_mag = 0.0;
+  rclcpp::Time e1_stamp;
+  bool have_e1 = false;
+
+  {
+    std::lock_guard<std::mutex> lk(e1_mtx_);
+    e1_mag = e1_norm_;
+    e1_stamp = e1_stamp_;
+    have_e1 = have_e1_;
+  }
+
+  // Optional: if no message yet, decide a safe default
+  // (here: treat as "large error" => w small => null_scale small)
+  if (!have_e1) {
+    e1_mag = 1;
+  }
+
+  // --- your same logic, driven by ||e1|| ---
+  const double e1_mag_n = std::clamp(e1_mag / 1.0, 0.0, 1.0);
+
+  const double w = std::pow(1.0 - e1_mag_n, 3.0);  // 0..1
+
+  const double null_scale_adapt = 0.0 + (1.0 - 0.0) * w; // 0..1
 
   RCLCPP_INFO_THROTTLE(
-      get_node()->get_logger(),
-      *get_node()->get_clock(),
-      500,  // ms
-      "TASK: ||qdot||=%.4f  norm=%.4f  w=%.4f  null_scale=%.4f",
-      task_mag,
-      task_mag_n,
-      w,
-      null_scale_adapt
+    get_node()->get_logger(),
+    *get_node()->get_clock(),
+    10,  // ms
+    "E1: ||e1||=%.4f  norm=%.4f  w=%.4f  null_scale=%.4f  have_e1=%d",
+    e1_mag,
+    e1_mag_n,
+    w,
+    null_scale_adapt,
+    static_cast<int>(have_e1)
   );
 
 
@@ -526,6 +585,7 @@ ResolvedRateController::update_and_write_commands(
     const double dt_used = std::min(dt, dt_ceiling_); // e.g., 0.02s
     const double dq = std::clamp(qdot_ref_[i] * dt_used, -step_limit_, step_limit_);  // add a new param step_limit_
     q_ref_[i] += dq;
+    q_ref_[i] = std::clamp(q_ref_[i], q_min_[i], q_max_[i]);  // joint limit clamp
   }
 
   // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,

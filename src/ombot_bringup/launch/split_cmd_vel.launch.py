@@ -1,11 +1,10 @@
-# bringup_wb_with_bag.launch.py
+# bringup_wb_with_bag_vel.launch.py
+#
+# Same as bringup_wb_with_bag.launch.py but uses ee_twist_velocity_controller
+# (joint velocity control) instead of resolved_rate_controller (torque control).
 
-import math
 from launch import LaunchDescription
-from launch.actions import (
-    DeclareLaunchArgument, ExecuteProcess,
-    RegisterEventHandler, Shutdown
-)
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, RegisterEventHandler, Shutdown
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command, FindExecutable
 from launch_ros.actions import Node
@@ -72,9 +71,10 @@ def generate_launch_description():
         output='screen'
     )
 
-    wb_rr = Node(
+    # CHANGED: use ee_twist_velocity_controller (velocity interface)
+    ee_vel = Node(
         package='controller_manager', executable='spawner',
-        arguments=['resolved_rate_controller', '--activate', '-c', '/controller_manager'],
+        arguments=['ee_twist_velocity_controller', '--activate', '-c', '/controller_manager'],
         output='screen'
     )
 
@@ -90,27 +90,26 @@ def generate_launch_description():
         name='goal_from_base_offset_latched',
         output='screen',
         parameters=[{
-            'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
+            'base_pose_topic': '/vrpn_mocap/RigidBody_2/pose',
             'goal_pose_topic': '/goal_pose',
-            'offset_xyz': [1.5, 0.0, 0.0],   # set your desired offset here (world frame)
-            'home_position': [0.246, 0.00, 0.485],
-            'latch': True,                   # True = latch once, False = follow base
+            'offset_xyz': [1.8, 0.0, 0.0],
+            # 'home_position': [0.246, 0.00, 0.485],
+            'home_position': [0.0, 0.00, 0.0],
+            'latch': True,
         }]
     )
 
-
-    # Chain: JSB -> Impedance -> WholeBodyResolvedRate
+    # Chain: JSB -> Impedance -> EE_Vel
     chain_imp_after_jsb = RegisterEventHandler(
         OnProcessExit(target_action=jsb, on_exit=[imp])
     )
-    chain_wb_after_imp = RegisterEventHandler(
-        OnProcessExit(target_action=imp, on_exit=[wb_rr])
+    chain_ee_vel_after_imp = RegisterEventHandler(
+        OnProcessExit(target_action=imp, on_exit=[ee_vel])
     )
 
     # --- Split commander (Python) ---
-    # Publishes:
-    #   - desired EE twist -> wb_resolved_rate_controller/ee_twist
-    #   - base cmd_vel     -> mecanum controller (via /cmd_vel or your topic)
+    # CHANGED: publish EE twist to the topic your ee_twist_velocity_controller subscribes to.
+    # In my publisher/controller defaults this is /ee_twist_cmd (TwistStamped).
     split_commander = Node(
         package='ombot_coordination',
         executable='split_commander',
@@ -122,79 +121,66 @@ def generate_launch_description():
             'ee_pose_topic':   '/ee_pose',
             'goal_pose_topic': '/goal_pose',
 
-            # Outputs
-            'ee_twist_topic':  '/resolved_rate_controller/ee_twist',
-            'base_cmd_topic':  '/mecanum_controller/reference',  # CHANGE if your base expects something else
+            # Outputs (CHANGED)
+            'ee_twist_topic':  '/ee_twist_cmd',
+            'base_cmd_topic':  '/mecanum_controller/reference',
 
             # Option B gains
-            # 'k1': 1.0,
-            'k1': 1.0,
-            # 'k2': 1.5,
-            'k3': 1.0,
+            'k1': 1.5,
+            'k3': 1.5,
             'k1d': 0.1,
-            # 'k2d': 0.2,
             'k3d': 0.1,
-            # 'k1': 0.0,
             'k2': 0.0,
-            # 'k3': 0.0,
-            # 'k1d': 0.0,
             'k2d': 0.0,
-            # 'k3d': 0.0,
-            # Stow point in base frame (set this!)
+
             'stow_point_b': [0.246, 0.00, 0.485],
 
-            # Arm PD (keep simple)
             'kp_pos': 1.0,
-            'kp_rot': 0.0,   # start simple: no orientation
+            'kp_rot': 0.0,
             'kd_pos': 0.0,
             'kd_rot': 0.0,
 
-            # Arm twist caps
             'max_lin': 0.15,
             'max_ang': 0.7,
 
-            # Base caps
-            'max_base_lin': 0.2,
+            'max_base_lin': 0.5,
             'max_base_ang': 0.2,
         }]
     )
 
-    
-    # Start commander only after wb_resolved_rate_controller is active
-    start_commander_after_wb = RegisterEventHandler(
-        OnProcessExit(target_action=wb_rr, on_exit=[split_commander])
+    # Start commander only after EE velocity controller is active
+    start_commander_after_ee = RegisterEventHandler(
+        OnProcessExit(target_action=ee_vel, on_exit=[split_commander])
     )
 
     # --- rosbag2 recorder ---
     topics_to_record = [
-        '/mecanum_controller/reference',         # base ref (TwistStamped)
-        '/resolved_rate_controller/ee_twist', # desired EE twist
+        '/mecanum_controller/reference',
+        '/ee_twist_cmd',                    # CHANGED
         '/vrpn_mocap/RigidBody_1/pose',
         '/vrpn_mocap/RigidBody_2/pose',
         '/goal_pose',
         '/joint_states',
         '/ee_pose',
-        '/debug/e1', 
+        '/debug/e1',
         '/debug/e2',
         '/debug/e3'
     ]
 
     bag_cmd_final = [
         'ros2', 'bag', 'record', *topics_to_record,
-        '--output', LaunchConfiguration('bag_prefix'),
-        '--storage', LaunchConfiguration('storage'),
-        # '--compression-mode', 'file',
-        # '--compression-format', LaunchConfiguration('compress'),
-        '--max-bag-size', LaunchConfiguration('max_bag_size'),
-        '--max-bag-duration', LaunchConfiguration('max_bag_secs'),
-        '--qos-profile-overrides-path', LaunchConfiguration('qos_overrides')
+        '--output', bag_prefix,
+        '--storage', storage,
+        '--max-bag-size', split_size,
+        '--max-bag-duration', split_secs,
+        '--qos-profile-overrides-path', qos_path
     ]
 
     bag_record = ExecuteProcess(cmd=bag_cmd_final, output='screen')
 
-    # Start bag when whole-body controller is active (same time as commander)
-    start_bag_after_wb = RegisterEventHandler(
-        OnProcessExit(target_action=wb_rr, on_exit=[bag_record])
+    # Start bag after EE velocity controller is active
+    start_bag_after_ee = RegisterEventHandler(
+        OnProcessExit(target_action=ee_vel, on_exit=[bag_record])
     )
 
     # Shutdown when ros2_control_node exits
@@ -210,7 +196,6 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time',  default_value='false'),
         DeclareLaunchArgument('bag_prefix',    default_value='ombot_run1'),
         DeclareLaunchArgument('storage',       default_value='sqlite3'),
-        # DeclareLaunchArgument('compress',      default_value='zstd'),
         DeclareLaunchArgument(
             'qos_overrides',
             default_value='/home/frank/frank_ws/src/ombot_bringup/config/qos.yaml'
@@ -222,17 +207,17 @@ def generate_launch_description():
         robot_state_publisher,
         control_node,
 
-        # Controllers: mecanum can start anytime; chain the arm controllers
+        # Controllers
         mecanum_spawner,
         jsb,
         chain_imp_after_jsb,
-        chain_wb_after_imp,
+        chain_ee_vel_after_imp,
 
         goal_from_offset,
 
-        # Start commander + bag once WB controller is active
-        start_commander_after_wb,
-        start_bag_after_wb,
+        # Start commander + bag once EE velocity controller is active
+        start_commander_after_ee,
+        start_bag_after_ee,
 
         end_when_control_exits,
     ])

@@ -60,6 +60,7 @@ class ResolvedRateTester(Node):
         msg.header.frame_id = self.frame_id
 
         msg.twist.linear.z = self.dir * self.vz_mag
+        # msg.twist.linear.x = 0.1
         # no rotation
         msg.twist.angular.z = 0.0
         msg.twist.angular.z = 0.0

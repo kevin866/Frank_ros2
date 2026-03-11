@@ -44,6 +44,7 @@ add_library(${PROJECT_NAME} SHARED
   src/cartesian_impedance_controller.cpp
   src/joint_velocity_excitation_controller.cpp
   src/joint_friction_calib_controller.cpp
+  src/ee_twist_velocity_controller.cpp
 
 )
 # target_include_directories(${PROJECT_NAME} PUBLIC

@@ -33,6 +33,7 @@ setup(
             'depth_move_away_cmd_publisher = ombot_coordination.depth_move_away_cmd_publisher:main',
             'moveaway_goto_cmd = ombot_coordination.moveaway_goto_cmd:main',
             'resolved_rate_tester = ombot_coordination.resolved_rate_tester:main',
+            'ee_twist_cmd_publisher = ombot_coordination.ee_twist_cmd_publisher:main'
         ],
     },
 )

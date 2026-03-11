@@ -61,11 +61,11 @@ def generate_launch_description():
             # 'offset_x': 0.5,            # meters
             'publish_rate_hz': 20.0,     # republish goal with fresh timestamps
             'mode': 'latch',              # default behavior (one-shot latch)
-            'offset_xyz': [-0.5, 0.0, 0.0] # 50cm forward in base frame
+            'offset_xyz': [0.0, 1.0, 0.0] # 50cm forward in base frame
         }],
         # RigidBody_1 is the base mocap topic, RigidBody_2 would be the arm if needed.
         remappings=[
-            # ('/vrpn_mocap/RigidBody_1/pose', '/vrpn_mocap/RigidBody_2/pose'),  # base
+            # ('/vrpn_mocap/RigidBody_1/pose', '/vrpn_mocap/RigidBody_1/pose'),  # base
             ('/goal_pose', '/goal_pose'),
         ],
         output='screen',

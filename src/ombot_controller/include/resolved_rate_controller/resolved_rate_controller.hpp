@@ -17,7 +17,9 @@
 #include "kdl/chain.hpp"
 #include "kdl/chainjnttojacsolver.hpp"
 #include "Eigen/Dense"
-
+#include <geometry_msgs/msg/vector3_stamped.hpp>
+#include <mutex>
+#include <cmath>
 namespace ombot_controller {
 
 class ResolvedRateController : public controller_interface::ChainableControllerInterface
@@ -82,6 +84,9 @@ private:
   std::vector<int> pos_cmd_index_;
   std::vector<int> vel_cmd_index_;
   std::vector<double> null_kp_, null_kd_;
+    std::vector<double> q_min_, q_max_; // desired home posture for nullspace
+
+
 
   double task_mag_ema_ = 0.0;   // smoothed task magnitude
   const double ema_alpha_ = 0.8; // 0..1, higher = quicker response
@@ -124,6 +129,13 @@ private:
 
   rclcpp::Time last_cmd_time_;
   double cmd_timeout_{0.25};   // seconds; tune 0.1–0.5
+  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr sub_e1_;
+
+  std::mutex e1_mtx_;
+  double e1_norm_{0.0};
+  rclcpp::Time e1_stamp_{0, 0, RCL_ROS_TIME};
+  bool have_e1_{false};
+
 };
 
 } // namespace ombot_controller

@@ -242,8 +242,9 @@ def generate_launch_description():
 
         # Start bag + tester (and RViz) after RR is active
         start_bag_after_rr,
-        # start_tester_after_rr,
+        start_tester_after_rr,
         start_rviz_after_rr,
+
 
         end_when_control_exits,
     ])

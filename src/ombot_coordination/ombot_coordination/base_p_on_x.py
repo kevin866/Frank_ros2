@@ -28,32 +28,44 @@ class BasePX(Node):
 
     def base_cb(self, msg):
         self.x = msg.pose.position.x
+        self.y = msg.pose.position.z
         self.tick()
 
     def goal_cb(self, msg):
         self.xg = msg.pose.position.x
+        self.yg = msg.pose.position.y
         self.tick()
 
     def tick(self):
         if self.x is None or self.xg is None: return
         ex = self.xg - self.x
-        self.get_logger().info(f"ex = {ex:.4f}")
+        ey = self.yg - self.y
+        self.get_logger().info(f"ex = {ex:.4f}, ey = {ey:.4f}, gy = {self.yg:.4f}, y = {self.y:.4f}")
 
-        v = self.kx * ex
+        vx = self.kx * ex
+        vy = self.kx * ey
 
         if abs(ex) <= self.tol:
-            v = 0.0
+            vx = 0.0
         else:
-            if abs(v) < self.min_v:
-                v = math.copysign(self.min_v, ex)
-            v = max(-self.vmax, min(self.vmax, v))
+            if abs(vx) < self.min_v:
+                vx = math.copysign(self.min_v, ex)
+            vx = max(-self.vmax, min(self.vmax, vx))
+
+        if abs(ey) <= self.tol:
+            vy = 0.0
+        else:
+            if abs(vy) < self.min_v:
+                vy = math.copysign(self.min_v, ey)
+            vy = max(-self.vmax, min(self.vmax, vy))
 
         if self.flip_forward:
-            v = -v               # quick one-line inversion if base forward is flipped
+            vx = -vx               # quick one-line inversion if base forward is flipped
         ts = TwistStamped()
         ts.header.stamp = self.get_clock().now().to_msg()   # <-- add this
         ts.header.frame_id = 'world'                         # or 'base_link' (not critical here)
-        ts.twist.linear.x = -float(v)
+        ts.twist.linear.x = -float(vy)
+        # ts.twist.linear.y = float(vy)
         self.pub_cmd.publish(ts)
 
 def main():

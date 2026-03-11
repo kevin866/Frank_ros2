@@ -42,6 +42,75 @@ class ThrottledLogger:
 
 def clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
+def smoothstep(x):
+    return 3*x*x - 2*x*x*x  # 0..1, smooth slope at ends
+
+class SoftBoxLimiter:
+    def __init__(self):
+        self.in_limit_x = False
+        self.in_limit_y = False
+        self.in_limit_z = False
+
+    def _limit_axis(self, p, v, pmin, pmax, m_enter, m_exit, dt, in_limit_flag):
+        # predict next position (this kills the "hits then backs off" tap)
+        p_next = p + v * dt
+
+        # distance to bounds (use next position for decision)
+        dist_lo = p_next - pmin
+        dist_hi = pmax - p_next
+
+        # hysteresis state update
+        if not in_limit_flag:
+            if dist_lo < m_enter or dist_hi < m_enter:
+                in_limit_flag = True
+        else:
+            if dist_lo > m_exit and dist_hi > m_exit:
+                in_limit_flag = False
+
+        # only apply scaling when we're in limiting mode
+        if in_limit_flag:
+            # scale only the inward direction
+            if v < 0.0 and dist_lo < m_exit:
+                x = max(0.0, min(1.0, dist_lo / m_exit))
+                v *= smoothstep(x)
+            if v > 0.0 and dist_hi < m_exit:
+                x = max(0.0, min(1.0, dist_hi / m_exit))
+                v *= smoothstep(x)
+
+        return v, in_limit_flag
+
+def apply_bound_with_latch(p_next: float,
+                           v_cmd: float,
+                           pmin: float,
+                           pmax: float,
+                           latched: bool,
+                           eps: float = 0.03):
+    """
+    If you hit a bound while moving outward, latch and force v=0.
+    Stay latched (v=0) until motion is inward or you're back inside.
+    Returns: (v_limited, latched)
+    """
+    # Hit lower bound moving outward (negative direction)
+    if p_next <= pmin + eps and v_cmd < 0.0:
+        return 0.0, True
+
+    # Hit upper bound moving outward (positive direction)
+    if p_next >= pmax - eps and v_cmd > 0.0:
+        return 0.0, True
+
+    if latched:
+        # Release latch if:
+        # 1) we're safely inside, OR
+        # 2) at lower bound but commanding inward, OR
+        # 3) at upper bound but commanding inward
+        # if ((pmin + eps) < p_next < (pmax - eps)) or \
+        #    (p_next <= pmin + eps and v_cmd > 0.0) or \
+        #    (p_next >= pmax - eps and v_cmd < 0.0) or False:
+        #     latched = False
+        # else:
+        return 0.0, True
+
+    return v_cmd, latched
 
 
 def quat_to_rotmat(qx: float, qy: float, qz: float, qw: float):
@@ -72,6 +141,23 @@ def quat_to_rotmat(qx: float, qy: float, qz: float, qw: float):
 def vel_deadband(v, db=0.01):
     return 0.0 if abs(v) < db else v
 
+def smooth_limit(p, v, pmin, pmax, margin):
+    
+    # lower bound
+    if v < 0.0:
+        dist = p - pmin
+        if dist < margin:
+            scale = max(0.0, dist / margin)
+            v *= scale
+
+    # upper bound
+    if v > 0.0:
+        dist = pmax - p
+        if dist < margin:
+            scale = max(0.0, dist / margin)
+            v *= scale
+
+    return v
 
 def rotmat_mul(Ra, Rb):
     out = [[0.0]*3 for _ in range(3)]
@@ -133,6 +219,8 @@ class SplitCommander(Node):
 
         # Topics
         self.declare_parameter("base_pose_topic", "/vrpn_mocap/RigidBody_1/pose")
+        self.declare_parameter("arm_pose_topic", "/vrpn_mocap/RigidBody_2/pose")
+
         self.declare_parameter("ee_pose_topic", "/ee_pose")
         self.declare_parameter("goal_pose_topic", "/goal_pose")
         self.declare_parameter("ee_twist_topic", "/resolved_rate_controller/ee_twist")
@@ -170,6 +258,7 @@ class SplitCommander(Node):
 
 
         base_pose_topic = self.get_parameter("base_pose_topic").value
+        arm_pose_topic  = self.get_parameter("arm_pose_topic").value
         ee_pose_topic   = self.get_parameter("ee_pose_topic").value
         goal_pose_topic = self.get_parameter("goal_pose_topic").value
         ee_twist_topic  = self.get_parameter("ee_twist_topic").value
@@ -197,13 +286,18 @@ class SplitCommander(Node):
         self.ws_min = np.array([-0.2, -0.5, 0.5], dtype=float)
         self.ws_max = np.array([ 0.6,  0.5, 0.8], dtype=float)
         self.ws_margin = 0.02   # 2 cm “soft” zone near the walls
+        
+        # persistent state somewhere
+        self.x_latched = False
+        self.y_latched = False
+        self.z_latched = False
 
 
         self.base: Optional[Pose3D] = None
         self.ee:   Optional[Pose3D] = None
         self.goal: Optional[Pose3D] = None
 
-        self.deadband = 0.1
+        self.deadband = 0.05
 
         sensor_qos = qos_profile_sensor_data
         reliable_qos = QoSProfile(
@@ -213,6 +307,7 @@ class SplitCommander(Node):
         )
 
         self.sub_base = self.create_subscription(PoseStamped, base_pose_topic, self.base_cb, sensor_qos)
+        self.sub_arm  = self.create_subscription(PoseStamped, arm_pose_topic,  self.arm_cb,  sensor_qos)
         self.sub_ee   = self.create_subscription(PoseStamped, ee_pose_topic,   self.ee_cb,   sensor_qos)
         self.sub_goal = self.create_subscription(PoseStamped, goal_pose_topic, self.goal_cb, reliable_qos)
 
@@ -229,6 +324,8 @@ class SplitCommander(Node):
         self.have_last_error = False
         self.last_e1 = [0.0, 0.0, 0.0]
         self.last_e2 = [0.0, 0.0, 0.0]
+        self.limiter = SoftBoxLimiter()
+
 
 
     def publish_vector(self, pub, vec, frame="base_link"):
@@ -261,7 +358,12 @@ class SplitCommander(Node):
             if p[i] >= pmax[i] - margin and v2[i] > 0: v2[i] = 0.0
         return v2
 
-
+    def arm_cb(self, msg: PoseStamped):
+        self.arm =  Pose3D(
+            [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z],
+            [msg.pose.orientation.x, msg.pose.orientation.y,
+             msg.pose.orientation.z, msg.pose.orientation.w],
+        )
 
     def base_cb(self, msg: PoseStamped):
         self.base = Pose3D(
@@ -284,6 +386,8 @@ class SplitCommander(Node):
              msg.pose.orientation.z, msg.pose.orientation.w],
         )
 
+
+
     def spin(self):
         now = self.get_clock().now()
         dt_raw = (now - self.last_time).nanoseconds * 1e-9
@@ -296,15 +400,17 @@ class SplitCommander(Node):
             return
 
         pb_w = np.array(self.base.p)   # base in world (you may not even need this)
+        pa_w = np.array(self.arm.p)    # arm in world (you may not even need this)
 
         R_wb = np.array([
             [1.0,  0.0,  0.0],
             [0.0,  0.0, 1.0],
             [0.0,  -1.0,  0.0],
         ])
+        t = np.array([0, -0.33, 0])   # translation applied after rotation
 
-        pb_b = R_wb.T @ pb_w   # base position in base frame (should be close to zero)
-        
+        pb_b = R_wb.T @ pb_w  
+        pa_b = R_wb.T @ pa_w 
         pe_b = self.ee.p
 
         # t_base_to_arm = np.array([0.0, 0.0, 0.358])   # base_link -> arm_base_link, expressed in base_link
@@ -319,8 +425,9 @@ class SplitCommander(Node):
         #     1.0,  # log once per second
         #     (
         #         f"Poses (base frame) | "
-        #         f"EE p={pe_b}, q={qe_b} | "
+        #         f"EE p={pe_b} | "
         #         f"Goal p={pg_b}, q={qg_b}"
+        #         f"arm p={pa_b} | "
         #     ),
         #     key="poses_all"
         # )
@@ -334,9 +441,13 @@ class SplitCommander(Node):
 
         e1 = [
             pg_b[0] - pe_b[0] - pb_b[0],
-            pg_b[1] - pe_b[1] - pb_b[1],
+            # pg_b[1] - pe_b[1] - pb_b[1],
+            0.0,
             0.0,
         ]
+        e1 = [pg_b[0] - pa_b[0],
+              pg_b[1] - pa_b[1],
+              pg_b[2] - pa_b[2]]
 
         # e2: stow - ee
         e2 = [self.stow_b[0] - pe_b[0],
@@ -430,12 +541,14 @@ class SplitCommander(Node):
 
         # --- Workspace box limits (base frame) ---
         pmin = np.array([-0.1, -0.3, 0.1], dtype=float)
-        pmax = np.array([ 0.4,  0.3, 0.5], dtype=float)
+        pmax = np.array([ 0.5,  0.3, 0.5], dtype=float)
         m = 0.02  # 2cm margin
 
         # current EE position in base frame (you must already have this)
         px, py, pz = pe_b[0], pe_b[1], pe_b[2]
-
+        # px_next = px + vx * dt
+        # py_next = py + vy * dt
+        # pz_next = pz + vz * dt
         # project velocity so it cannot push outward at/near limits
         if px <= pmin[0] + m and vx < 0.0: vx = 0.0
         if px >= pmax[0] - m and vx > 0.0: vx = 0.0
@@ -446,6 +559,37 @@ class SplitCommander(Node):
         if pz <= pmin[2] + m and vz < 0.0: vz = 0.0
         if pz >= pmax[2] - m and vz > 0.0: vz = 0.0
 
+        # vx = smooth_limit(px_next, vx, pmin[0], pmax[0], m)
+        # vy = smooth_limit(py_next, vy, pmin[1], pmax[1], m)
+        # vz = smooth_limit(pz_next, vz, pmin[2], pmax[2], m)
+        
+      
+
+        # in your control loop:
+        # vx = smooth_limit(px_next, vx, pmin[0], pmax[0], m)
+        # vy = smooth_limit(py_next, vy, pmin[1], pmax[1], m)
+        # vz = smooth_limit(pz_next, vz, pmin[2], pmax[2], m)
+
+        # vx, x_latched = apply_bound_with_latch(px_next, vx, pmin[0], pmax[0], self.x_latched)
+        # vy, y_latched = apply_bound_with_latch(py_next, vy, pmin[1], pmax[1], self.y_latched)
+        # vz, z_latched = apply_bound_with_latch(pz_next, vz, pmin[2], pmax[2], self.z_latched)
+        # self.x_latched = x_latched
+        # self.y_latched = y_latched
+        # self.z_latched = z_latched
+
+        # self.get_logger().info(f"x_latched: {x_latched}")
+        # self.get_logger().info(f"px_next: {px_next}")
+
+
+       
+
+        # choose hysteresis band
+        # m_enter = m          # start limiting
+        # m_exit  = 1.3 * m    # stop limiting (a bit larger)
+
+        # vx, self.limiter.in_limit_x = self.limiter._limit_axis(px, vx, pmin[0], pmax[0], m_enter, m_exit, dt, self.limiter.in_limit_x)
+        # vy, self.limiter.in_limit_y = self.limiter._limit_axis(py, vy, pmin[1], pmax[1], m_enter, m_exit, dt, self.limiter.in_limit_y)
+        # vz, self.limiter.in_limit_z = self.limiter._limit_axis(pz, vz, pmin[2], pmax[2], m_enter, m_exit, dt, self.limiter.in_limit_z)
 
 
         # Publish arm twist
@@ -459,11 +603,11 @@ class SplitCommander(Node):
         tmsg.twist.angular.y = float(wy)
         tmsg.twist.angular.z = float(wz)
         self.pub_twist.publish(tmsg)
-        self.get_logger().info(
-            f"cmd linear: vx={tmsg.twist.linear.x:.3f}, "
-            f"vy={tmsg.twist.linear.y:.3f}, "
-            f"vz={tmsg.twist.linear.z:.3f}"
-        )
+        # self.get_logger().info(
+        #     f"cmd linear: vx={tmsg.twist.linear.x:.3f}, "
+        #     f"vy={tmsg.twist.linear.y:.3f}, "
+        #     f"vz={tmsg.twist.linear.z:.3f}"
+        # )
 
         # --- Base command from F3: move stow toward goal (XY only) ---
         vbx = -self.k3 * e2[0]
@@ -478,8 +622,8 @@ class SplitCommander(Node):
         bmsg = TwistStamped()
         bmsg.header.stamp = now.to_msg()
         bmsg.header.frame_id = "base_link"
-        bmsg.twist.linear.x = -float(vel_deadband(vbx, 0.01))
-        bmsg.twist.linear.y = -float(vel_deadband(vby, 0.01))
+        bmsg.twist.linear.x = -float(vel_deadband(vbx, 0.02))
+        bmsg.twist.linear.y = -float(vel_deadband(vby, 0.02))
         bmsg.twist.linear.z = 0.0
         bmsg.twist.angular.x = 0.0
         bmsg.twist.angular.y = 0.0
@@ -497,19 +641,19 @@ class SplitCommander(Node):
             key="cmds"
         )
 
-        self.log.info(
-            1.0,
-            (
-                "errors (base frame)\n"
-                f"  e1 (goal-ee):  "
-                f"[x={e1[0]:+.3f}, y={e1[1]:+.3f}, z={e1[2]:+.3f}]\n"
-                f"  e2 (stow-ee):  "
-                f"[x={e2[0]:+.3f}, y={e2[1]:+.3f}, z={e2[2]:+.3f}]\n"
-                f"  e3 (goal-stow):"
-                f"[x={e3[0]:+.3f}, y={e3[1]:+.3f}]"
-            ),
-            key="errs"
-        )
+        # self.log.info(
+        #     1.0,
+        #     (
+        #         "errors (base frame)\n"
+        #         f"  e1 (goal-ee):  "
+        #         f"[x={e1[0]:+.3f}, y={e1[1]:+.3f}, z={e1[2]:+.3f}]\n"
+        #         f"  e2 (stow-ee):  "
+        #         f"[x={e2[0]:+.3f}, y={e2[1]:+.3f}, z={e2[2]:+.3f}]\n"
+        #         f"  e3 (goal-stow):"
+        #         f"[x={e3[0]:+.3f}, y={e3[1]:+.3f}]"
+        #     ),
+        #     key="errs"
+        # )
 
         self.publish_vector(self.e1_pub, e1)
         self.publish_vector(self.e2_pub, e2)
