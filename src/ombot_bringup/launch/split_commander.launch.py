@@ -92,8 +92,9 @@ def generate_launch_description():
         parameters=[{
             'base_pose_topic': '/vrpn_mocap/RigidBody_1/pose',
             'goal_pose_topic': '/goal_pose',
-            'offset_xyz': [1.5, 0.0, 0.0],   # set your desired offset here (world frame)
+            'offset_xyz': [0.5, 0.0, 0.0],   # set your desired offset here (world frame)
             'home_position': [0.246, 0.00, 0.485],
+            # 'home_position': [0.0, 0.00, 0.0],
             'latch': True,                   # True = latch once, False = follow base
         }]
     )
@@ -128,9 +129,9 @@ def generate_launch_description():
 
             # Option B gains
             # 'k1': 1.0,
-            'k1': 1.0,
+            'k1': 1.5,
             # 'k2': 1.5,
-            'k3': 1.0,
+            'k3': 1.5,
             'k1d': 0.1,
             # 'k2d': 0.2,
             'k3d': 0.1,

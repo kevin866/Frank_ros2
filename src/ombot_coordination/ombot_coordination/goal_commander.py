@@ -47,8 +47,10 @@ class GoalCommander(Node):
                 qx, qy, qz, qw = yaw_to_quat(yaw)
 
                 self.goal.header.stamp = self.get_clock().now().to_msg()
-                self.goal.pose.position.x = x - 0.22
-                self.goal.pose.position.y = y - 0.32
+                # self.goal.pose.position.x = x - 0.22
+                # self.goal.pose.position.y = y - 0.32
+                self.goal.pose.position.x = x 
+                self.goal.pose.position.y = -y 
                 self.goal.pose.position.z = z
                 self.goal.pose.orientation.x = 0.0
                 self.goal.pose.orientation.y = 0.0

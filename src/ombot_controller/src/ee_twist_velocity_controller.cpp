@@ -73,6 +73,8 @@ EeTwistVelocityController::on_configure(const rclcpp_lifecycle::State &)
   joint_names_ = get_node()->get_parameter("joints").as_string_array();
   base_link_   = get_node()->get_parameter("base_link").as_string();
   tip_link_    = get_node()->get_parameter("tip_link").as_string();
+  manip_pub_ = get_node()->create_publisher<std_msgs::msg::Float64>(
+  "manipulability", 10);
 
   twist_topic_ = get_node()->get_parameter("twist_topic").as_string();
   cmd_timeout_ = get_node()->get_parameter("cmd_timeout").as_double();
@@ -330,6 +332,22 @@ EeTwistVelocityController::update(const rclcpp::Time & time,
       J(r, c) = J_kdl_(r, c);
     }
   }
+    // ---- Manipulability ----
+  double manipulability = 0.0;
+
+  // For < 6 DOF arms, use translational manipulability (top 3 rows of J)
+  Eigen::MatrixXd Jv = J.topRows(3);   // 3 x N
+  Eigen::Matrix3d M = Jv * Jv.transpose();
+
+  double detM = M.determinant();
+  if (detM < 0.0) {
+    detM = 0.0;  // numerical safety
+  }
+  manipulability = std::sqrt(detM);
+
+  std_msgs::msg::Float64 manip_msg;
+  manip_msg.data = manipulability;
+  manip_pub_->publish(manip_msg);
 
   // Damped least squares:
   // dq = J^T (J J^T + lambda^2 I)^-1 v
@@ -338,7 +356,7 @@ EeTwistVelocityController::update(const rclcpp::Time & time,
   Eigen::Matrix<double,6,1> x = A.ldlt().solve(v_task);
   Eigen::VectorXd dq_cmd_e = J.transpose() * x;
 
-  // Optional nullspace posture: dq += (I - J# J) * ( -kp (q - q_nom) )
+  // // Optional nullspace posture: dq += (I - J# J) * ( -kp (q - q_nom) )
   if (use_posture_nullspace_ && null_kp_ > 0.0) {
     double e1_mag = 0.0;
     rclcpp::Time e1_stamp;

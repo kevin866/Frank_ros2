@@ -8,6 +8,7 @@
 #include "geometry_msgs/msg/twist_stamped.hpp"
 #include "rclcpp/subscription.hpp"
 #include "realtime_tools/realtime_buffer.h"
+#include "std_msgs/msg/float64.hpp"
 
 #include "kdl/chain.hpp"
 #include "kdl/jntarray.hpp"
@@ -90,10 +91,12 @@ private:
   void apply_soft_limits_(const std::vector<double>& q,
                           const std::vector<double>& dq,
                           std::vector<double>& dq_cmd) const;
+  
 
   using Vector3Msg = geometry_msgs::msg::Vector3Stamped;
 
   rclcpp::Subscription<Vector3Msg>::SharedPtr e1_sub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr manip_pub_;
 
   mutable std::mutex e1_mtx_;
   double e1_norm_{0.0};

@@ -92,12 +92,39 @@ def generate_launch_description():
         parameters=[{
             'base_pose_topic': '/vrpn_mocap/RigidBody_2/pose',
             'goal_pose_topic': '/goal_pose',
-            'offset_xyz': [1.8, 0.0, 0.0],
+            'offset_xyz': [1.5, 0.0, 0.0],
             # 'home_position': [0.246, 0.00, 0.485],
             'home_position': [0.0, 0.00, 0.0],
             'latch': True,
         }]
     )
+    # optitrack_tf = Node(
+    #     package="ombot_coordination",
+    #     executable="optitrack_tf_pub",
+    #     output="screen",
+    #     parameters=[{
+    #         "pose_topic": "/vrpn_mocap/RigidBody_1/pose",
+    #         "world_frame": "world",
+    #         "base_frame": "base_link",
+    #         "use_planar": True,
+    #         "axis_fix": "xzy",
+    #         "yaw_offset": 0.0,
+    #         "alpha_pos": 0.2,
+    #         "alpha_yaw": 0.2,
+    #     }]
+    # )
+
+    # goal_commander = Node(
+    #     package="ombot_coordination",
+    #     executable="goal_commander",
+    #     output="screen",
+    #     parameters=[{
+    #         "world_frame": "world",
+    #         "topic": "/goal_pose",
+    #         "rate_hz": 100.0,
+    #         'goal': "1.5 1.0 0.475 0.0",
+    #     }]
+    # )
 
     # Chain: JSB -> Impedance -> EE_Vel
     chain_imp_after_jsb = RegisterEventHandler(
@@ -130,8 +157,8 @@ def generate_launch_description():
             'k3': 1.5,
             'k1d': 0.1,
             'k3d': 0.1,
-            'k2': 0.0,
-            'k2d': 0.0,
+            'k2': 1.5,
+            'k2d': 0.1,
 
             'stow_point_b': [0.246, 0.00, 0.485],
 
@@ -164,7 +191,8 @@ def generate_launch_description():
         '/ee_pose',
         '/debug/e1',
         '/debug/e2',
-        '/debug/e3'
+        '/debug/e3',
+        '/manipulability',                    # CHANGED: new topic for manipulability measure
     ]
 
     bag_cmd_final = [
@@ -209,11 +237,13 @@ def generate_launch_description():
 
         # Controllers
         mecanum_spawner,
-        jsb,
-        chain_imp_after_jsb,
+        # jsb,
+        # chain_imp_after_jsb,
+        imp,
         chain_ee_vel_after_imp,
 
         goal_from_offset,
+        # goal_commander,
 
         # Start commander + bag once EE velocity controller is active
         start_commander_after_ee,

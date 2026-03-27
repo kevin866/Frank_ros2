@@ -233,6 +233,7 @@ class SplitCommander(Node):
         self.declare_parameter("k1d", 0.0)
         self.declare_parameter("k2d", 0.0)
         self.declare_parameter("k3d", 0.0)
+        self.declare_parameter("e1_scale", 1.0)   # "characteristic scale" of e1 for adaptive weighting (tune this based on your task)
 
 
         # Stow point (in base frame)
@@ -286,6 +287,7 @@ class SplitCommander(Node):
         self.ws_min = np.array([-0.2, -0.5, 0.5], dtype=float)
         self.ws_max = np.array([ 0.6,  0.5, 0.8], dtype=float)
         self.ws_margin = 0.02   # 2 cm “soft” zone near the walls
+        self.e1_scale = float(self.get_parameter("e1_scale").value)
         
         # persistent state somewhere
         self.x_latched = False
@@ -389,6 +391,8 @@ class SplitCommander(Node):
 
 
     def spin(self):
+        # self.get_logger().info("started")
+
         now = self.get_clock().now()
         dt_raw = (now - self.last_time).nanoseconds * 1e-9
         if dt_raw <= 0.0:
@@ -396,7 +400,8 @@ class SplitCommander(Node):
         dt = min(dt_raw, 0.05)
         self.last_time = now
 
-        if self.base is None or self.ee is None or self.goal is None:
+        if self.base is None or self.ee is None or self.goal is None or self.arm is None:
+            # self.get_logger().info("started")
             return
 
         pb_w = np.array(self.base.p)   # base in world (you may not even need this)
@@ -431,7 +436,7 @@ class SplitCommander(Node):
         #     ),
         #     key="poses_all"
         # )
-
+        
         # --- Explicit errors ---
         # e1: goal - ee
 
@@ -441,14 +446,13 @@ class SplitCommander(Node):
 
         e1 = [
             pg_b[0] - pe_b[0] - pb_b[0],
-            # pg_b[1] - pe_b[1] - pb_b[1],
             0.0,
             0.0,
         ]
-        e1 = [pg_b[0] - pa_b[0],
-              pg_b[1] - pa_b[1],
-              pg_b[2] - pa_b[2]]
-
+        # e1 = [pg_b[0] - pa_b[0],
+        #       0.0,
+        #       0.0]
+        
         # e2: stow - ee
         e2 = [self.stow_b[0] - pe_b[0],
             self.stow_b[1] - pe_b[1],
@@ -469,7 +473,10 @@ class SplitCommander(Node):
 
         self.last_e1 = e1.copy()
         self.last_e2 = e2.copy()
-
+        self.get_logger().info(
+            f"e1: [{e1[0]:.4f}, {e1[1]:.4f}, {e1[2]:.4f}]  "
+            f"de1: [{de1[0]:.4f}, {de1[1]:.4f}, {de1[2]:.4f}]"
+        )
 
 
         # --- Arm "force" in task space (Option B literal) ---
@@ -477,19 +484,20 @@ class SplitCommander(Node):
         # e_sum = [e1[0] + e2[0],
         #         e1[1] + e2[1],
         #         e1[2] + e2[2]]
-        # e_sum = [self.k1 * e1[0] + self.k2 * e2[0] + self.k1d * de1[0] + self.k2d * de2[0],
-        #     self.k1 * e1[1] + self.k2 * e2[1] + self.k1d * de1[1] + self.k2d * de2[1],
-        #     self.k1 * e1[2] + self.k2 * e2[2] + self.k1d * de1[2] + self.k2d * de2[2]]
-        e_sum = [self.k1 * e1[0] + self.k1d * de1[0],
-            self.k1 * e1[1] + self.k1d * de1[1] ,
-            self.k1 * e1[2] + self.k1d * de1[2]]
-        # self.get_logger().info(
-        #     f"e_sum: [{e_sum[0]:.4f}, {e_sum[1]:.4f}, {e_sum[2]:.4f}]"
-        # )
-        # self.get_logger().info(
-        #     f"e1: [{e1[0]:.4f}, {e1[1]:.4f}, {e1[2]:.4f}]  "
-        #     f"de1: [{de1[0]:.4f}, {de1[1]:.4f}, {de1[2]:.4f}]"
-        # )
+        # e1_mag = np.linalg.norm(e1)
+        # denom = max(1e-6, self.e1_scale)
+        # e1_mag_n = np.clip(e1_mag / denom, 0.0, 1.0)
+
+        # w = (1.0 - e1_mag_n) ** 3.0   # adaptive weight for e2 part
+        e_sum = [
+            self.k1 * e1[0] + self.k1d * de1[0],
+            self.k1 * e1[1] + self.k1d * de1[1],
+            0.0
+        ]
+        self.get_logger().info(
+            f"e_sum: [{e_sum[0]:.4f}, {e_sum[1]:.4f}, {e_sum[2]:.4f}]"
+        )
+     
 
         # Deadband on the combined error
         e_sum_db = [smooth_deadband(e_sum[i], self.deadband) for i in range(3)]
@@ -515,6 +523,10 @@ class SplitCommander(Node):
 
         # --- Commanded EE twist (base frame) ---
         # If you want "pure Option B", you can set kd_pos=0 and treat kp_pos as a scale.
+        # vx = self.kp_pos * e_sum_db[0] + self.k3 * e2[0]
+        # vy = self.kp_pos * e_sum_db[1] + self.k3 * e2[1]
+        # vz = self.kp_pos * e_sum_db[2] + self.k3 * e2[2]
+        
         vx = self.kp_pos * e_sum_db[0] 
         vy = self.kp_pos * e_sum_db[1] 
         vz = self.kp_pos * e_sum_db[2] 
@@ -631,15 +643,15 @@ class SplitCommander(Node):
         self.pub_base.publish(bmsg)
 
         # --- Logging ---
-        self.log.info(
-            1.0,
-            (
-                f"cmd arm lin=[{vx:+.2f},{vy:+.2f},{vz:+.2f}] "
-                f"ang=[{wx:+.2f},{wy:+.2f},{wz:+.2f}] | "
-                f"base lin=[{bmsg.twist.linear.x:+.2f},{bmsg.twist.linear.y:+.2f}]"
-            ),
-            key="cmds"
-        )
+        # self.log.info(
+        #     1.0,
+        #     (
+        #         f"cmd arm lin=[{vx:+.2f},{vy:+.2f},{vz:+.2f}] "
+        #         f"ang=[{wx:+.2f},{wy:+.2f},{wz:+.2f}] | "
+        #         f"base lin=[{bmsg.twist.linear.x:+.2f},{bmsg.twist.linear.y:+.2f}]"
+        #     ),
+        #     key="cmds"
+        # )
 
         # self.log.info(
         #     1.0,
