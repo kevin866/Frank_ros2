@@ -167,7 +167,7 @@ def generate_launch_description():
         mecanum_controller_spawner,
         delay_impedance_after_jsb,
         delay_rviz_after_jsb,
-        # zed_camera_launch,
+        zed_camera_launch,
         ee2base,
     ]
     return LaunchDescription(declared_arguments + nodes)
