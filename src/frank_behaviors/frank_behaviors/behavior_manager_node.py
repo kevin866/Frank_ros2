@@ -4,7 +4,7 @@ from typing import Optional
 
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import TwistStamped
 from std_msgs.msg import String
 
 
@@ -12,7 +12,8 @@ class BehaviorManagerNode(Node):
     def __init__(self):
         super().__init__('behavior_manager_node')
 
-        self.pub_cmd_vel = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.pub_cmd_vel = self.create_publisher(TwistStamped, '/mecanum_controller/reference', 10)
+
 
         self.sub_intent = self.create_subscription(
             String, '/frank/intent', self.intent_callback, 10
@@ -61,7 +62,8 @@ class BehaviorManagerNode(Node):
         if data.startswith('face_detected:'):
             try:
                 center_str = data.split(':')[1]
-                self.latest_face_center = int(center_str)
+                cx_str = center_str.split(',')[0]   # take only cx, ignore cy
+                self.latest_face_center = int(cx_str)
             except Exception:
                 self.get_logger().warn(f'Could not parse face info: {data}')
 
@@ -76,9 +78,10 @@ class BehaviorManagerNode(Node):
 
         if self.mode == 'find_face':
             if self.latest_face_center is None:
-                twist = Twist()
-                twist.angular.z = 0.2
-                self.pub_cmd_vel.publish(twist)
+                msg = TwistStamped()
+                msg.header.stamp = self.get_clock().now().to_msg()  # add stamp
+                msg.twist.angular.z = 0.2
+                self.pub_cmd_vel.publish(msg)
             else:
                 self.publish_stop()
                 self.mode = 'idle'
@@ -93,26 +96,28 @@ class BehaviorManagerNode(Node):
             image_center = self.image_width // 2
             error = self.latest_face_center - image_center
 
-            twist = Twist()
+            twist = TwistStamped()
+            twist.header.stamp = self.get_clock().now().to_msg()  # add stamp
 
             if abs(error) < self.center_tolerance_px:
-                twist.angular.z = 0.0
+                twist.twist.angular.z = 0.0
             else:
                 # Simple proportional turning
                 k = 0.0015
-                twist.angular.z = -k * error
+                twist.twist.angular.z = -k * error
 
                 # Clamp
-                if twist.angular.z > 0.3:
-                    twist.angular.z = 0.3
-                elif twist.angular.z < -0.3:
-                    twist.angular.z = -0.3
+                if twist.twist.angular.z > 0.3:
+                    twist.twist.angular.z = 0.3
+                elif twist.twist.angular.z < -0.3:
+                    twist.twist.angular.z = -0.3
 
             self.pub_cmd_vel.publish(twist)
 
     def publish_stop(self):
-        twist = Twist()
-        self.pub_cmd_vel.publish(twist)
+        msg = TwistStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        self.pub_cmd_vel.publish(msg)
 
 
 def main(args=None):

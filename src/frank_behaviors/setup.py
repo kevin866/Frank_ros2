@@ -1,4 +1,6 @@
 from setuptools import find_packages, setup
+from glob import glob
+import os
 
 package_name = 'frank_behaviors'
 
@@ -10,20 +12,19 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='frank',
-    maintainer_email='k.wang1502483@gmail.com',
-    description='TODO: Package description',
-    license='TODO: License declaration',
-    extras_require={
-        'test': [
-            'pytest',
-        ],
-    },
+    maintainer='kevin',
+    maintainer_email='kevin@example.com',
+    description='Behavior nodes for Frank interaction demo',
+    license='MIT',
+    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'text_intent_node = frank_behaviors.text_intent_node:main',
+            'behavior_manager_node = frank_behaviors.behavior_manager_node:main',
         ],
     },
 )

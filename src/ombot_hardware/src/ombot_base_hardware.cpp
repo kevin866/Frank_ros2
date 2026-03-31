@@ -64,7 +64,9 @@ OMBotBaseSystem::on_init(const hardware_interface::HardwareInfo & info)
     if (v.find(":B")   != std::string::npos || v.find(":b") != std::string::npos) c.ch = 2;
     return c;
   };
-  std::vector<std::string> map_keys = {"fl_map","fr_map","rl_map","rr_map"};
+  // std::vector<std::string> map_keys = {"fl_map","fr_map","rl_map","rr_map"};
+  std::vector<std::string> map_keys = {"fr_map","rr_map","fl_map","rl_map"};
+
   map_.resize(4);
   for (size_t i=0;i<4;i++) {
     std::string v = getp(map_keys[i], i<2 ? "ctrl1:A" : "ctrl2:A");
@@ -421,19 +423,39 @@ OMBotBaseSystem::write(const rclcpp::Time &, const rclcpp::Duration &)
     //   cmd_rad_s_[0], cmd_rad_s_[1], cmd_rad_s_[2], cmd_rad_s_[3]
     // );
 
+    // if (deadman_) {
+    //   // payload_front = "!G " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i])) + "_";
+    //   // payload_back  = "!G " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i+2])) + "_";
+    //   payload_front = "!S " + std::to_string(i+1) + " " + std::to_string(static_cast<int>(cmd_rad_s_[i])) + "_";
+    //   payload_back  = "!S " + std::to_string(i+1) + " " + std::to_string(static_cast<int>(cmd_rad_s_[i+2])) + "_";
+    // } else {
+    //   payload_front = "!MS " + std::to_string(i+1) + "_";
+    //   payload_back  = "!MS " + std::to_string(i+1) + "_";
+    // }
     if (deadman_) {
-      // payload_front = "!G " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i])) + "_";
-      // payload_back  = "!G " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i+2])) + "_";
-      payload_front = "!S " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i])) + "_";
-      payload_back  = "!S " + std::to_string(i+1) + " " + std::to_string(-static_cast<int>(cmd_rad_s_[i+2])) + "_";
+      for (size_t i = 0; i < 4; ++i) {
+          RoboteqIface &dev = (map_[i].ctrl == 1) ? ctrl1_ : ctrl2_;
+          int ch = map_[i].ch;
+          std::string payload = "!S " + std::to_string(ch) + " " + std::to_string(static_cast<int>(cmd_rad_s_[i])) + "_";
+          RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"),
+                "Wheel %zu (ctrl%d:ch%d) cmd: %s (cmd_rad_s=%.3f)",
+                i, map_[i].ctrl, ch, payload.c_str(), cmd_rad_s_[i]);
+
+          dev.write_raw(payload);
+      }
     } else {
-      payload_front = "!MS " + std::to_string(i+1) + "_";
-      payload_back  = "!MS " + std::to_string(i+1) + "_";
+        // Optionally, stop all wheels if deadman is not pressed
+        for (size_t i = 0; i < 4; ++i) {
+            RoboteqIface &dev = (map_[i].ctrl == 1) ? ctrl1_ : ctrl2_;
+            int ch = map_[i].ch;
+            std::string payload = "!MS " + std::to_string(ch) + "_";
+            dev.write_raw(payload);
+        }
     }
     // RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "FRONT: %s", payload_front.c_str());
     // RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"), "BACK: %s", payload_back.c_str());
-    ctrl1_.write_raw(payload_front);
-    ctrl2_.write_raw(payload_back);
+    // ctrl1_.write_raw(payload_front);
+    // ctrl2_.write_raw(payload_back);
   }
 
 

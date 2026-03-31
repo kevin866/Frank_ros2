@@ -67,11 +67,17 @@ private:
     const double s = 1.0 / wheel_radius_;
 
     // FL, FR, RL, RR (make sure your joint order matches controllers.yaml)
+    // std::array<double,4> w{
+    //   s*(+vx - vy - sumL*wz),
+    //   s*(+vx + vy + sumL*wz),
+    //   s*(+vx + vy - sumL*wz),
+    //   s*(+vx - vy + sumL*wz)
+    // };
     std::array<double,4> w{
-      s*(+vx - vy - sumL*wz),
-      s*(+vx + vy + sumL*wz),
-      s*(+vx + vy - sumL*wz),
-      s*(+vx - vy + sumL*wz)
+      s*(+vx + vy + sumL*wz), // FR
+      s*(+vx - vy + sumL*wz), // RR
+      s*(+vx - vy - sumL*wz), // FL
+      s*(+vx + vy - sumL*wz)  // RL
     };
 
     std_msgs::msg::Float64MultiArray cmd;

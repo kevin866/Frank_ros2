@@ -21,7 +21,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "launch_zed",
             default_value="true",
-            description="Launch ZED2i camera.",
+            description="Launch ZED2 camera.",
         ),
     ]
 
@@ -61,16 +61,6 @@ def generate_launch_description():
         parameters=[robot_description, controllers_yaml,{'validate_interfaces': False}],
         output="screen",
     )
-
-    # control_node = Node(
-    #     package='controller_manager', executable='ros2_control_node',
-    #     parameters=[
-    #         {'robot_description': robot_description},
-    #         controllers_yaml,
-    #         {'validate_interfaces': False}
-    #     ],
-    #     output='screen'
-    # )
 
 
     # Base robot_state_publisher
