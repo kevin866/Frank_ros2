@@ -85,6 +85,7 @@ def generate_launch_description():
         parameters=[{
             'image_topic':   LaunchConfiguration('image_topic'),
             'display_debug': LaunchConfiguration('display_debug'),
+            'score_threshold': 0.85,
         }]
     )
 

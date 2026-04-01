@@ -437,9 +437,9 @@ OMBotBaseSystem::write(const rclcpp::Time &, const rclcpp::Duration &)
           RoboteqIface &dev = (map_[i].ctrl == 1) ? ctrl1_ : ctrl2_;
           int ch = map_[i].ch;
           std::string payload = "!S " + std::to_string(ch) + " " + std::to_string(static_cast<int>(cmd_rad_s_[i])) + "_";
-          RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"),
-                "Wheel %zu (ctrl%d:ch%d) cmd: %s (cmd_rad_s=%.3f)",
-                i, map_[i].ctrl, ch, payload.c_str(), cmd_rad_s_[i]);
+          // RCLCPP_INFO(rclcpp::get_logger("OMBotBaseSystem"),
+          //       "Wheel %zu (ctrl%d:ch%d) cmd: %s (cmd_rad_s=%.3f)",
+          //       i, map_[i].ctrl, ch, payload.c_str(), cmd_rad_s_[i]);
 
           dev.write_raw(payload);
       }
