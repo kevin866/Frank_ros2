@@ -27,7 +27,7 @@ def generate_launch_description():
     # -----------------------------
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     gui          = LaunchConfiguration('gui', default='false')
-    chained      = LaunchConfiguration('chained', default='false')
+    chained      = LaunchConfiguration('chained', default='true')
 
     # Bag args (optional)
     record_bag   = LaunchConfiguration('record_bag', default='false')
@@ -45,7 +45,7 @@ def generate_launch_description():
     pub_topic    = LaunchConfiguration('pub_topic', default='/ee_twist_cmd')
     pub_frame    = LaunchConfiguration('pub_frame', default='base_link')
     pub_rate_hz  = LaunchConfiguration('pub_rate_hz', default='50.0')
-    pub_mode     = LaunchConfiguration('pub_mode', default='const')  # const|circle|yaw|zero
+    pub_mode     = LaunchConfiguration('pub_mode', default='oscillate')  # const|circle|yaw|zero|oscillate
 
     pub_vx       = LaunchConfiguration('pub_vx', default='0.05')
     pub_vy       = LaunchConfiguration('pub_vy', default='0.0')
@@ -236,7 +236,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('gui', default_value='false'),
-        DeclareLaunchArgument('chained', default_value='false'),
+        DeclareLaunchArgument('chained', default_value='true'),
         DeclareLaunchArgument('controllers_yaml', default_value=PathJoinSubstitution([
             get_package_share_directory('ombot_bringup'),
             'config', 'ombot_controller.yaml'
@@ -246,7 +246,7 @@ def generate_launch_description():
         DeclareLaunchArgument('pub_topic', default_value='/ee_twist_cmd'),
         DeclareLaunchArgument('pub_frame', default_value='base_link'),
         DeclareLaunchArgument('pub_rate_hz', default_value='50.0'),
-        DeclareLaunchArgument('pub_mode', default_value='const'),
+        DeclareLaunchArgument('pub_mode', default_value='oscillate'),  # const|circle|yaw|zero|oscillate    
 
         DeclareLaunchArgument('pub_vx', default_value='-0.05'),
         DeclareLaunchArgument('pub_vy', default_value='0.0'),
@@ -272,8 +272,8 @@ def generate_launch_description():
 
         # Controllers
         jsb,
-        chain_imp_after_jsb_chained,
-        chain_imp_after_jsb_normal,
+        # chain_imp_after_jsb_chained,
+        # chain_imp_after_jsb_normal,
         chain_ee_vel_after_imp_chained,
         chain_ee_vel_after_imp_normal,
 

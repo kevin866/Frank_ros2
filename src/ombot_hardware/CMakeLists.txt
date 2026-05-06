@@ -18,6 +18,8 @@ find_package(io_context REQUIRED)
 add_library(${PROJECT_NAME} SHARED
   src/ombot_arm_hardware.cpp
   src/ombot_base_hardware.cpp
+  src/ombot_gripper_hardware.cpp   
+
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

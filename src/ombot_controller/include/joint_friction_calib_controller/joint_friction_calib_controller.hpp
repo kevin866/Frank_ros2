@@ -49,6 +49,7 @@ private:
   double g_scale_{1.0};
   double alpha_{1.0};                       // gravity output filter
   std::vector<double> effort_limits_;       // optional clamp
+  std::vector<double> q_hold_;
 
   // Calibration settings
   std::string active_joint_name_{""};       // prefer name; fallback to index
@@ -57,7 +58,7 @@ private:
   double v_amp_{0.2};                       // rad/s excitation amplitude
   double v_freq_{0.2};                      // Hz
   double settle_time_{2.0};                 // seconds before collecting samples
-  double run_time_{20.0};                   // seconds to collect samples (per joint)
+  double run_time_{60.0};                   // seconds to collect samples (per joint)
 
   // Velocity servo (effort output)
   double Kv_{2.0};                          // Nm / (rad/s)

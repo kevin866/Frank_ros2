@@ -43,6 +43,9 @@ controller_manager:
 
     ee_twist_velocity_controller:
       type: "ombot_controller/EeTwistVelocityController"
+
+    gripper_controller:
+      type: gripper_action_controller/GripperActionController
     
 
 joint_state_broadcaster:
@@ -77,11 +80,16 @@ joint_impedance_controller:
     vel_lpf_alpha: 0.6
 
     friction:
-      Fc: [0.4, 0.4, 0.3, 0.2, 0.15, 0.10]
-      B: [0.02, 0.02, 0.015, 0.01, 0.008, 0.006]
+      Fc: [0.4, 0.4, 2.0, 0.2, 0.15, 0.10]
+      B: [0.02, 0.02, 0.3, 0.11, 0.008, 0.006]
       v_deadband: [0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
       v_sgn_eps: [0.01, 0.01, 0.01, 0.01, 0.01, 0.01]
       tau_bias: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      # Fc: [0.47073, 0.59221, 6.07063, 0.28505, 0.64118, 0.55177]
+      # B: [4.50845, 10.09759, 21.23562, 5.27269, 0.1, 0.10000]
+      # tau_bias: [-0.01642, -0.09786, -0.54324, -0.04532, -0.05613, 0.02724]
+      # v_deadband: [0.02000, 0.02000, 0.02000, 0.02000, 0.02000, 0.02000]
+      # v_sgn_eps: [0.01000, 0.01000, 0.01000, 0.01000, 0.01000, 0.01000]
 
       # Fc:       [0.60, 1.60, 2.50, 0.30, 0.55, 0.50]
       # B:        [4.50, 6.00, 3.00, 5.50, 1.90, 0.80]
@@ -171,8 +179,8 @@ joint_friction_calib_controller:
 resolved_rate_controller:
   ros__parameters:
     joints: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6]
-    null_kp: [3.0, 3.0, 2.0, 1.0, 0.5, 0.3]
-    null_kd: [0.8, 0.8, 0.6, 0.4, 0.25, 0.2]
+    # null_kp: [3.0, 3.0, 2.0, 1.0, 0.5, 0.3]
+    # null_kd: [0.8, 0.8, 0.6, 0.4, 0.25, 0.2]
     # null_kp: [30.0, 30.0, 20.0, 20.0, 10.0, 5.0]
     # null_kd: [2.0, 2.0, 1.5, 1.0, 0.6, 0.3]
     # q_min: [-2.8, -1.7, -2.8, -3.0, -2.8, -0.01, -2.8]
@@ -182,8 +190,8 @@ resolved_rate_controller:
     q_min: [-3.14, -2.0, -2.5, -3.14, -2.0, -3.14]
     q_max: [ 3.14,  2.0,  2.5,  3.14,  2.0,  3.14]
 
-    # null_kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    # null_kd: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    null_kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    null_kd: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     q_home:  [0.0, -0.6, 0.4, 0.0, 0.30, 0.0]
     base_link: link_1
     tip_link:  end_link
@@ -392,3 +400,14 @@ ee_twist_velocity_controller:
     q_soft_margin: 0.25
     k_limit: 2.0
     d_limit: 0.0
+
+
+gripper_controller:
+  ros__parameters:
+    joint: gripper_joint
+    goal_tolerance: 0.01
+    max_effort: 300.0
+    allow_stalling: true
+    stall_timeout: 2.0
+    stall_velocity_threshold: 0.001
+    action_monitor_rate: 20.0

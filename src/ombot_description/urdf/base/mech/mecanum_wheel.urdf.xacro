@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:property name="wheel_radius" value="0.06985" />
+  <xacro:property name="wheel_radius" value="0.05985" />
   <xacro:property name="wheel_separation" value="0.51" />
   <xacro:property name="wheel_width" value="0.0508" />
   <xacro:property name="wheel_mass" value="9.1" />
-  <xacro:property name="wheel_xoff" value="0.197" />
-  <xacro:property name="wheel_yoff" value="-0.01" />
+  <xacro:property name="wheel_xoff" value="0.2" />
+  <xacro:property name="wheel_yoff" value="0.008" />
   <xacro:macro name="mecanum_wheel" params="prefix side x_reflect y_reflect">
     <link name="${prefix}${side}_wheel_link">
       <visual>

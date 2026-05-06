@@ -374,6 +374,43 @@ ros2 launch ombot_bringup bringup_rr_with_bag.launch.py bag_prefix:=test_run
 ros2 launch ombot_bringup bringup_qp.launch.py bag_prefix:=qp_run
 ```
 
+## Perception and Interaction Stack
+
+The following packages add voice-controlled human interaction capabilities to Frank:
+
+### `frank_vision`
+- YuNet face detection using ZED 2 RGB stream
+- Multiscale detection for mixed near/far distances
+- Publishes face center, bounding box, confidence, and annotated debug image
+- Topics: `/vision/face_detections`, `/vision/face_info`, `/vision/debug_image`
+
+### `frank_audio`
+- Whisper-based speech-to-text using `faster-whisper` (tiny.en model)
+- WebRTC VAD to detect speech onset/offset
+- Intent classification mapping free-form speech to robot commands
+- Topics: `/frank/intent`, `/voice/raw_text`
+
+### `frank_behaviors`
+- Behavior manager state machine (idle / find_face / track_face / go_home)
+- Proportional yaw control to keep face centered in ZED image
+- Depth-based approach control to maintain target distance from person
+- Obstacle detection via depth history monitoring
+- Topics: subscribes to `/frank/intent`, `/vision/face_info`, `/zed/zed_node/depth/depth_registered`
+
+### Running the interaction demo
+```bash
+ros2 launch frank_behaviors frank_interaction_demo.launch.py \
+  launch_zed:=true \
+  start_control:=false \
+  start_jsb:=false
+```
+
+Voice commands supported:
+- "follow me" / "come here" → track and approach person
+- "find me" / "look around" → spin until face detected
+- "stop" / "halt" → stop all motion
+- "go home" → return to home position (TODO)
+
 ## Notes For Contributors
 
 - This repo is organized around real hardware, not a complete simulation stack.

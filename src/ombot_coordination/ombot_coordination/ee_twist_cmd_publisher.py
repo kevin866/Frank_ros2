@@ -28,7 +28,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import TwistStamped
 
 
-Mode = Literal["const", "circle", "yaw", "zero"]
+Mode = Literal["const", "circle", "yaw", "zero", "oscillate"]
 
 
 class EeTwistCmdPublisher(Node):
@@ -115,8 +115,19 @@ class EeTwistCmdPublisher(Node):
             msg.twist.angular.y = 0.0
             msg.twist.angular.z = amp * math.sin(w * t)
 
+        elif mode == "oscillate":
+            freq = float(self.get_parameter("freq").value)
+            amp  = float(self.get_parameter("vx").value)
+            w = 2.0 * math.pi * freq
+            msg.twist.linear.x  = amp * math.sin(w * t)
+            msg.twist.linear.y  = 0.0
+            msg.twist.linear.z  = 0.0
+            msg.twist.angular.x = 0.0
+            msg.twist.angular.y = 0.0
+            msg.twist.angular.z = 0.0
+
         else:
-            self.get_logger().warn(f"Unknown mode='{mode}'. Use const|circle|yaw|zero. Sending zero twist.")
+            self.get_logger().warn(f"Unknown mode='{mode}'. Use const|circle|yaw|zero|oscillate. Sending zero twist.")
 
         self.pub.publish(msg)
 

@@ -38,17 +38,26 @@ class BehaviorManagerNode(Node):
         self.center_tolerance_px = 40
 
         # ── tuning ────────────────────────────────────────────────────────────
-        self.yaw_k          = 0.0008
-        self.yaw_max        = 0.2
-        
-        # EMA filter for depth
-        self.filtered_depth: Optional[float] = None
-        self.depth_alpha = 0.2  # lower = smoother, higher = more responsive
+        self.yaw_k   = 0.0008
+        self.yaw_max = 0.2
 
-        self.approach_k     = 0.3
-        self.approach_max   = 0.15
+        # Smoother EMA — lower alpha = more smoothing
+        self.depth_alpha = 0.08  # was 0.2
+        self.filtered_depth: Optional[float] = None   # ← add this
+        # self.depth_alpha = 0.2
+
+        self.approach_k     = 0.15   # was 0.3 — softer P gain reduces oscillation
+        self.approach_max   = 0.12
         self.target_dist    = 1.5
-        self.dist_tolerance = 0.05
+        self.dist_tolerance = 0.12   # was 0.05 — wider deadband stops hunting
+
+        # Obstacle detection — raise threshold to reduce false positives on noisy depth
+        self.obstacle_drop_threshold = 0.7   # was 0.4
+
+        # Command smoothing (EMA on output)
+        self.prev_linear  = 0.0
+        self.prev_angular = 0.0
+        self.cmd_alpha    = 0.4   # blend new command with previous
 
         # ── obstacle detection ────────────────────────────────────────────────
         self.depth_history: Deque[float] = collections.deque(maxlen=5)  # last 5 readings
@@ -231,6 +240,12 @@ class BehaviorManagerNode(Node):
             # ignore tiny commands — deadband to prevent jitter
             MIN_LINEAR  = 0.03   # m/s
             MIN_ANGULAR = 0.02   # rad/s
+                
+            # Smooth output commands to prevent jitter
+            linear_cmd  = self.cmd_alpha * linear_cmd  + (1 - self.cmd_alpha) * self.prev_linear
+            yaw_cmd     = self.cmd_alpha * yaw_cmd     + (1 - self.cmd_alpha) * self.prev_angular
+            self.prev_linear  = linear_cmd
+            self.prev_angular = yaw_cmd
 
             if abs(linear_cmd) < MIN_LINEAR:
                 linear_cmd = 0.0

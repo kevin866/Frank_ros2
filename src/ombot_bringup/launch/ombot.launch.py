@@ -120,7 +120,7 @@ def generate_launch_description():
         name='ee_to_base',
         parameters=[{
             'use_stamped_out': True,        # set False if /mecanum_controller/reference expects Twist
-            'kp_lin': -10.0,
+            'kp_lin': 10.0,
             'kp_yaw': 5.0,
             'vmax': 0.3,
             'wmax': 0.2,

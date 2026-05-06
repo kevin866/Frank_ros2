@@ -520,17 +520,17 @@ ResolvedRateController::update_and_write_commands(
 
   const double null_scale_adapt = 0.0 + (1.0 - 0.0) * w; // 0..1
 
-  RCLCPP_INFO_THROTTLE(
-    get_node()->get_logger(),
-    *get_node()->get_clock(),
-    10,  // ms
-    "E1: ||e1||=%.4f  norm=%.4f  w=%.4f  null_scale=%.4f  have_e1=%d",
-    e1_mag,
-    e1_mag_n,
-    w,
-    null_scale_adapt,
-    static_cast<int>(have_e1)
-  );
+  // RCLCPP_INFO_THROTTLE(
+  //   get_node()->get_logger(),
+  //   *get_node()->get_clock(),
+  //   10,  // ms
+  //   "E1: ||e1||=%.4f  norm=%.4f  w=%.4f  null_scale=%.4f  have_e1=%d",
+  //   e1_mag,
+  //   e1_mag_n,
+  //   w,
+  //   null_scale_adapt,
+  //   static_cast<int>(have_e1)
+  // );
 
 
   // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,

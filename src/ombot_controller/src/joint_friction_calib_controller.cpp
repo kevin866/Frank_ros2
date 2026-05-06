@@ -297,6 +297,16 @@ JointFrictionCalibController::on_activate(const rclcpp_lifecycle::State &)
   for (auto & f : fit_) f.reset();
   std::fill(joint_done_.begin(), joint_done_.end(), false);
 
+  const size_t N = joint_names_.size();
+  q_hold_.resize(N);
+  for (size_t i = 0; i < N; ++i) {
+    q_hold_[i] = state_interfaces_[3*i + 0].get_value();
+  }
+  // for (size_t i = 0; i < N; ++i) {
+  //   q_hold_[i] = 0.0;
+  // }
+  q_hold_[1] = -M_PI/6.0;
+  
   if (active_joint_index_ < 0 && auto_advance_) {
     active_joint_index_ = 0;
   }
@@ -506,21 +516,21 @@ JointFrictionCalibController::update(const rclcpp::Time & time,
   std::vector<double> tau_g(N, 0.0);
   compute_gravity_(q, tau_g);
 
-  std::ostringstream oss;
-  oss << "tau_g = [";
-  for (size_t i = 0; i < tau_g.size(); ++i) {
-    oss << std::fixed << std::setprecision(4) << tau_g[i];
-    if (i < tau_g.size() - 1)
-      oss << ", ";
-  }
-  oss << "]";
+  // std::ostringstream oss;
+  // oss << "tau_g = [";
+  // for (size_t i = 0; i < tau_g.size(); ++i) {
+  //   oss << std::fixed << std::setprecision(4) << tau_g[i];
+  //   if (i < tau_g.size() - 1)
+  //     oss << ", ";
+  // }
+  // oss << "]";
 
-  RCLCPP_INFO_THROTTLE(
-      get_node()->get_logger(),
-      *get_node()->get_clock(),
-      1000,
-      "%s",
-      oss.str().c_str());
+  // RCLCPP_INFO_THROTTLE(
+  //     get_node()->get_logger(),
+  //     *get_node()->get_clock(),
+  //     1000,
+  //     "%s",
+  //     oss.str().c_str());
 
   // Coriolis torques
   for (size_t i = 0; i < N; ++i) dq_kdl_(i) = dq[i];
@@ -548,7 +558,12 @@ JointFrictionCalibController::update(const rclcpp::Time & time,
   // }
 
   // Default command = zero velocity (hold)
+  // Default command = position hold for all joints
   std::vector<double> dq_cmd(N, 0.0);
+  for (size_t i = 0; i < N; ++i) {
+      const double pos_error = q_hold_[i] - q[i];
+      dq_cmd[i] = std::clamp(2.0 * pos_error, -0.05, 0.05);
+  }
 
   if (phase_ == Phase::DONE) {
     write_velocity_cmd_(dq_cmd);
@@ -584,14 +599,26 @@ JointFrictionCalibController::update(const rclcpp::Time & time,
     RCLCPP_INFO(get_node()->get_logger(), "Joint[%d] entering RUN phase.", j);
   }
 
+  // if (phase_ == Phase::RUN && t >= (settle_time_ + run_time_)) {
+  //   finish_joint_(j);
+  //   maybe_advance_joint_(time);
+  //   // after maybe_advance_joint_, we might be in SETTLE for next joint or DONE
+
+  //   // velocity-mode: stop motion for settle / next joint
+  //   std::vector<double> dq_cmd(N, 0.0);
+  //   write_velocity_cmd_(dq_cmd);
+  //   return controller_interface::return_type::OK;
+  // }
   if (phase_ == Phase::RUN && t >= (settle_time_ + run_time_)) {
     finish_joint_(j);
+    
+    // Update hold position to wherever joints are now
+    for (size_t i = 0; i < N; ++i) {
+      q_hold_[i] = q[i];
+    }
+    
     maybe_advance_joint_(time);
-    // after maybe_advance_joint_, we might be in SETTLE for next joint or DONE
-
-    // velocity-mode: stop motion for settle / next joint
-    std::vector<double> dq_cmd(N, 0.0);
-    write_velocity_cmd_(dq_cmd);
+    write_velocity_cmd_(dq_cmd);  // dq_cmd already has hold values
     return controller_interface::return_type::OK;
   }
 
@@ -602,66 +629,33 @@ JointFrictionCalibController::update(const rclcpp::Time & time,
   // const double dq_ref = v_amp_ * std::sin(w * std::max(0.0, t - settle_time_));
   const double Tseg = 2.0;                      // seconds per segment
   const double t_run = std::max(0.0, t - settle_time_);
-  const int seg = static_cast<int>(t_run / Tseg) % 2;
+  // const int seg = static_cast<int>(t_run / Tseg) % 2;
 
   double dq_ref = 0.0;
-  switch (seg) {
-    case 0: dq_ref = +0.1; break;
-    case 1: dq_ref = -0.1; break;
+
+  // const int seg = static_cast<int>(t_run / Tseg) % 6;
+ 
+  if (phase_ == Phase::RUN) {
+
+    const int seg = static_cast<int>(t_run / Tseg) % 6;
+    switch (seg) {
+      case 0: dq_ref = +0.05; break;
+      case 1: dq_ref = -0.05; break;
+      case 2: dq_ref = +0.15; break;
+      case 3: dq_ref = -0.15; break;
+      case 4: dq_ref = +0.25; break;
+      case 5: dq_ref = -0.25; break;
+    }
+
+    dq_cmd[j] = dq_ref;
   }
-  // const double T = 1.0 / v_freq_;
-  // const double tt = std::fmod(std::max(0.0, t - settle_time_), T);
-  // const double dq_ref = (tt < 0.5*T) ? +v_amp_ : -v_amp_;
 
-
-  // Velocity servo torque
-//   const double e_v = dq_ref - dq[j];
-//   const double Kvj = Kv_joints_.empty() ? Kv_ : Kv_joints_[j];
-//   const double Kdj = Kd_joints_.empty() ? Kd_ : Kd_joints_[j];
-//   double tau_servo = Kvj * e_v - Kdj * dq[j];
-//   tau_servo = std::clamp(tau_servo, -max_servo_tau_, max_servo_tau_);
-
-
-//   RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 500,
-//   "dq_ref=%.3f dq=%.3f tau_servo=%.3f (sat=%d) n=%d",
-//   dq_ref, dq[j], tau_servo,
-//   (std::abs(tau_servo) >= 0.99*max_servo_tau_), fit_[j].n);
-
-//   // Optional friction feedforward after fit
-//   double tau_ff = 0.0;
-//   if (apply_friction_ff_after_fit_ && joint_done_[j]) {
-//     const double s = smooth_sign_(dq[j]);
-//     tau_ff = Fc_[j] * s + B_[j] * dq[j] + tau_bias_[j];
-//   }
-
-//   const double qj   = q_(j);      // if q_ is KDL::JntArray
-// // OR: const double qj = q[j];   // if you store positions in std::vector<double>
-
-//   const double dqj  = dq[j];
-
-//   const double qmin = q_min_[j];
-//   const double qmax = q_max_[j];
-//   const double m    = q_soft_margin_;
-
-//   double tau_limit = 0.0;
-
-//   if (qj < qmin + m) {
-//     tau_limit += k_limit_ * ((qmin + m) - qj) - d_limit_ * dqj;
-//   }
-//   if (qj > qmax - m) {
-//     tau_limit -= k_limit_ * (qj - (qmax - m)) + d_limit_ * dqj;
-//   }
-
-//   // Command = gravity + servo (+ optional FF)
-//   // tau_cmd[j] = tau_g[j] + tau_servo + tau_ff;
-//   tau_cmd[j] = tau_g[j] + tau_servo + tau_limit;
-
-  dq_cmd[j] = dq_ref;
 
   
   // ----- Only collect during RUN -----
   if (phase_ == Phase::RUN)
   {
+
     bool accept = true;
 
     const double v = dq[j];
@@ -674,11 +668,16 @@ JointFrictionCalibController::update(const rclcpp::Time & time,
     const double ddq_max = 0.15;  // tune 0.3~1.0
     if (std::abs(ddq) > ddq_max)
       accept = false;
-    if (std::abs(dq_ref) < 0.7 * v_amp_) accept = false;
+    // if (std::abs(dq_ref) < 0.7 * v_amp_) accept = false;
+    // if (std::abs(dq_ref) < 0.04) accept = false;  // reject near-zero reference
+
     const double t_in_seg = std::fmod(t_run, Tseg);
     if (t_in_seg < 0.5) accept = false;                 // wait for settling
-    if (std::abs(dq[j] - dq_ref) > 0.03) accept = false; // not tracking well
+    if (std::abs(dq[j] - dq_ref) > 0.05) accept = false; // not tracking well
     if (std::abs(dq[j]) < 0.02) accept = false;
+    const double margin = 0.1;
+    if (q[j] > q_max_[j] - margin || q[j] < q_min_[j] + margin)
+        accept = false;
 
     // --- Reject saturated torque samples ---
     // const bool sat = (std::abs(tau_servo) > 0.98 * max_servo_tau_);
@@ -695,21 +694,73 @@ JointFrictionCalibController::update(const rclcpp::Time & time,
 
       // Use command-based friction during debugging
       // const double y = tau_meas[j] - tau_g[j];
-      const double y = tau_meas[j] - tau_g[j] - c_kdl_(j);
+      const double y = (tau_meas[j] - tau_g[j] - c_kdl_(j));
 
       fit_[j].add(s, v, y);
     }
   }
 
-  
+  // Before writing velocity command
+  const double margin = 0.1; // rad
+  if (q[j] > q_max_[j] - margin && dq_ref > 0) dq_cmd[j] = 0.0;
+  if (q[j] < q_min_[j] + margin && dq_ref < 0) dq_cmd[j] = 0.0;
+
+  // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 100,
+  // "v=%.4f  sign_v=%.3f  tau_meas=%.4f  tau_g=%.4f  c=%.4f  y=%.4f",
+  // dq[j], smooth_sign_(dq[j]),
+  // tau_meas[j], tau_g[j], c_kdl_(j),
+  // tau_meas[j] - tau_g[j] - c_kdl_(j));
 
 
-  
+
+  RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    "q:        [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]",
+    q[0], q[1], q[2], q[3], q[4], q[5]);
+  RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    "tau_meas: [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]",
+    tau_meas[0], tau_meas[1], tau_meas[2],
+    tau_meas[3], tau_meas[4], tau_meas[5]);
+  RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+    "tau_g:    [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]",
+    tau_g[0], tau_g[1], tau_g[2],
+    tau_g[3], tau_g[4], tau_g[5]);
+
+  // RCLCPP_INFO(get_node()->get_logger(),
+  // "Chain: %u joints, %u segments",
+  // chain_.getNrOfJoints(), chain_.getNrOfSegments());
+  // for (unsigned i = 0; i < chain_.getNrOfSegments(); i++) {
+  //   auto& seg = chain_.getSegment(i);
+  //   RCLCPP_INFO(get_node()->get_logger(),
+  //     "  seg[%u]: %s  joint: %s  mass: %.3f",
+  //     i, seg.getName().c_str(),
+  //     seg.getJoint().getName().c_str(),
+  //     seg.getInertia().getMass());
+
+  //   auto cog = seg.getInertia().getCOG();
+  //   RCLCPP_INFO(get_node()->get_logger(),
+  //     "seg[%u]: %s  mass=%.3f  CoG=[%.4f, %.4f, %.4f]",
+  //     i, seg.getName().c_str(),
+  //     seg.getInertia().getMass(),
+  //     cog.x(), cog.y(), cog.z());
+  // }
+  // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 500,
+  // "j2: q=%.3f dq=%.4f tau_meas=%.3f tau_g=%.3f residual=%.3f",
+  // q[2], dq[2], tau_meas[2], tau_g[2], tau_meas[2] - tau_g[2]);
+
+  // // // std::vector<double> dq_cmd(N, 0.0);
+  // for (size_t i = 0; i < N; ++i) {
+  //     const double pos_error = q_hold_[i] - q[i];
+  //     dq_cmd[i] = std::clamp(2.0 * pos_error, -0.05, 0.05);
+  // }
+  write_velocity_cmd_(dq_cmd);
 
   // clamp_effort_(tau_cmd);
   // write_effort_cmd_(tau_cmd);
-  write_velocity_cmd_(dq_cmd);
-
+  // write_velocity_cmd_(dq_cmd);
+  // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 200,
+  //   "j=%d v=%.4f sign_v=%.1f tau_meas=%.4f tau_g=%.4f y=%.4f",
+  //   j, dq[j], smooth_sign_(dq[j]), tau_meas[j], tau_g[j],
+  //   tau_meas[j] - tau_g[j] - c_kdl_(j));
   // Light debug
   // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
   //   "j=%d phase=%d dq_ref=%.3f dq=%.3f tau_g=%.3f tau_servo=%.3f tau_meas=%.3f n=%d",
