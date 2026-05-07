@@ -28,8 +28,14 @@ CallbackReturn OMBotGripperHardware::on_init(const hardware_interface::HardwareI
   dxl_id_       = static_cast<uint8_t>(std::stoi(param("id", "12")));
   open_pulse_   = std::stoi(param("open_pulse",   "1754"));
   close_pulse_  = std::stoi(param("close_pulse",  "594"));
+  open_m_       = std::stod(param("open_m",    "0.019"));
+  close_m_      = std::stod(param("close_m",   "-0.010"));
   current_limit_= static_cast<int16_t>(std::stoi(param("current_limit_mA", "300")));
   simulate_     = (param("simulate", "false") == "true" || param("simulate", "false") == "1");
+
+  // Precompute linear pulse ↔ meter scale factors
+  m_per_pulse_ = (open_m_ - close_m_) / static_cast<double>(open_pulse_ - close_pulse_);
+  m_offset_    = close_m_ - close_pulse_ * m_per_pulse_;
 
   // ── Validate: expect exactly one joint ──
   if (info_.joints.size() != 1) {
@@ -39,7 +45,7 @@ CallbackReturn OMBotGripperHardware::on_init(const hardware_interface::HardwareI
   }
 
   // ── Seed command to open position ──
-  position_cmd_ = gripper_pulses_to_rad(open_pulse_);
+  position_cmd_ = open_pulse_ * m_per_pulse_ + m_offset_;  // open_m_
   pwm_cmd_      = 0.0;
 
   // ── Prepare SDK handles (no I/O yet) ──
@@ -136,7 +142,7 @@ hardware_interface::CallbackReturn OMBotGripperHardware::on_activate(const rclcp
   // Seed state from actual hardware position
   uint32_t raw = 0;
   ph_->read4ByteTxRx(port_, dxl_id_, GRIPPER_ADDR_PRESENT_POSITION, &raw, &dxl_error);
-  joint_position_ = gripper_pulses_to_rad(static_cast<int32_t>(raw));
+  joint_position_ = static_cast<int32_t>(raw) * m_per_pulse_ + m_offset_;
   position_cmd_   = joint_position_;   // don't jump on first write
 
   RCLCPP_INFO(rclcpp::get_logger("OMBotGripperHardware"),
@@ -187,13 +193,15 @@ OMBotGripperHardware::prepare_command_mode_switch(
   const std::vector<std::string> & start_interfaces,
   const std::vector<std::string> & /*stop_interfaces*/)
 {
-  requested_mode_ = command_mode_;  // default: keep current
+  requested_mode_ = command_mode_;
+  const std::string & jname = info_.joints[0].name;  // "gripper_joint"
 
   for (const auto & key : start_interfaces) {
     const auto slash = key.find('/');
     if (slash == std::string::npos) continue;
-    const std::string ifname = key.substr(slash + 1);
+    if (key.substr(0, slash) != jname) continue;   // ← ignore other joints' interfaces
 
+    const std::string ifname = key.substr(slash + 1);
     if (ifname == hardware_interface::HW_IF_POSITION)
       requested_mode_ = GripperMode::Position;
     else if (ifname == hardware_interface::HW_IF_EFFORT)
@@ -252,12 +260,13 @@ OMBotGripperHardware::read(const rclcpp::Time &, const rclcpp::Duration & period
   // Present position
   uint32_t raw_pos = 0;
   ph_->read4ByteTxRx(port_, dxl_id_, GRIPPER_ADDR_PRESENT_POSITION, &raw_pos, &dxl_error);
-  joint_position_ = gripper_pulses_to_rad(static_cast<int32_t>(raw_pos));
+  joint_position_ = static_cast<int32_t>(raw_pos) * m_per_pulse_ + m_offset_;
 
-  // Present velocity
+  // Present velocity (0.229 rpm per unit → rad/s → m/s)
   uint32_t raw_vel = 0;
   ph_->read4ByteTxRx(port_, dxl_id_, GRIPPER_ADDR_PRESENT_VELOCITY, &raw_vel, &dxl_error);
-  joint_velocity_ = gripper_vel_units_to_rad_s(static_cast<int32_t>(raw_vel));
+  joint_velocity_ = gripper_vel_units_to_rad_s(static_cast<int32_t>(raw_vel))
+                    * m_per_pulse_ * GRIPPER_PULSES_PER_REV / (2.0 * M_PI);
 
   // Present current (effort) — signed 16-bit, units ≈ 1 mA
   uint16_t raw_cur = 0;
@@ -277,14 +286,13 @@ OMBotGripperHardware::write(const rclcpp::Time &, const rclcpp::Duration &)
   int rc = COMM_SUCCESS;
 
   if (command_mode_ == GripperMode::Position) {
-    // Clamp to safe pulse range
-    const double rad_min = gripper_pulses_to_rad(
-      std::min(open_pulse_, close_pulse_));
-    const double rad_max = gripper_pulses_to_rad(
-      std::max(open_pulse_, close_pulse_));
-    const double clamped = std::clamp(position_cmd_, rad_min, rad_max);
+    // Clamp to safe meter range, then convert back to pulses
+    const double m_min  = std::min(open_m_, close_m_);
+    const double m_max  = std::max(open_m_, close_m_);
+    const double clamped = std::clamp(position_cmd_, m_min, m_max);
 
-    const int32_t pulses = gripper_rad_to_pulses(clamped);
+    const int32_t pulses = static_cast<int32_t>(
+      std::llround((clamped - m_offset_) / m_per_pulse_));
     rc = ph_->write4ByteTxRx(port_, dxl_id_, GRIPPER_ADDR_GOAL_POSITION,
                               static_cast<uint32_t>(pulses), &dxl_error);
   } else {
@@ -298,7 +306,7 @@ OMBotGripperHardware::write(const rclcpp::Time &, const rclcpp::Duration &)
 
   // if (rc != COMM_SUCCESS || dxl_error != 0) {
     // Fixed — alert bit alone does not block writes
-  if (rc != COMM_SUCCESS || (dxl_error & 0x7F) != 0)
+  if (rc != COMM_SUCCESS || (dxl_error & 0x7F) != 0){
     RCLCPP_WARN_THROTTLE(rclcpp::get_logger("OMBotGripperHardware"),
                          *log_clock_, 2000,
                          "Write failed rc=%d err=%u (%s)",

@@ -90,12 +90,6 @@ def generate_launch_description():
         arguments=["joint_impedance_controller", "-c", "/controller_manager"],
         output="screen",
     )
-    gripper_controller_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["gripper_controller", "-c", "/controller_manager"],
-        output="screen",
-    )
     # RViz
     gui = LaunchConfiguration("gui")
     rviz_node = Node(
@@ -117,12 +111,6 @@ def generate_launch_description():
         event_handler=OnProcessExit(
             target_action=joint_state_broadcaster_spawner,
             on_exit=[impedance_controller_spawner],
-        )
-    )
-    delay_gripper_after_jsb = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=joint_state_broadcaster_spawner,
-            on_exit=[gripper_controller_spawner],
         )
     )
 
@@ -168,7 +156,6 @@ def generate_launch_description():
         joint_state_broadcaster_spawner,
         mecanum_controller_spawner,
         delay_impedance_after_jsb,
-        delay_gripper_after_jsb,
         delay_rviz_after_jsb,
         zed_camera_launch,
         ee2base,

@@ -45,7 +45,7 @@ controller_manager:
       type: "ombot_controller/EeTwistVelocityController"
 
     gripper_controller:
-      type: gripper_action_controller/GripperActionController
+      type: position_controllers/GripperActionController
     
 
 joint_state_broadcaster:

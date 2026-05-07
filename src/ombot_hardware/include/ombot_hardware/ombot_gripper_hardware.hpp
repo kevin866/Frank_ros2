@@ -101,6 +101,10 @@ private:
   uint8_t     dxl_id_{12};
   int32_t     open_pulse_{1754};   // raw pulse for fully open
   int32_t     close_pulse_{594};   // raw pulse for fully closed
+  double      open_m_{0.019};      // prismatic position [m] when at open_pulse_
+  double      close_m_{-0.010};    // prismatic position [m] when at close_pulse_
+  double      m_per_pulse_{1.0};   // computed in on_init: (open_m_ - close_m_) / (open_pulse_ - close_pulse_)
+  double      m_offset_{0.0};      // computed in on_init: close_m_ - close_pulse_ * m_per_pulse_
   int16_t     current_limit_{300}; // mA soft cap in position mode
   bool        simulate_{false};
 
@@ -110,12 +114,12 @@ private:
   GripperMode requested_mode_{GripperMode::Position};
 
   // ── state buffers (exported as StateInterfaces) ──
-  double joint_position_{0.0};   // rad
-  double joint_velocity_{0.0};   // rad/s
+  double joint_position_{0.0};   // m   (prismatic)
+  double joint_velocity_{0.0};   // m/s (prismatic)
   double joint_effort_{0.0};     // mA (raw current, no k_t for XL330 micro)
 
   // ── command buffers (exported as CommandInterfaces) ──
-  double position_cmd_{0.0};     // rad  (used in Position mode)
+  double position_cmd_{0.0};     // m   (used in Position mode, prismatic)
   double pwm_cmd_{0.0};          // -1.0 … +1.0 normalised (used in PWM mode)
 
   bool hw_connected_{false};
