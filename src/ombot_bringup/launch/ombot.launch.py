@@ -157,6 +157,9 @@ def generate_launch_description():
         ]),
         launch_arguments={
             'camera_model': 'zed2',
+            'camera_name': 'zed2',  
+            'publish_tf':     'false',
+            'publish_map_tf': 'false',
         }.items(),
         condition=IfCondition(launch_zed),
     )

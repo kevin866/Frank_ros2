@@ -2,11 +2,11 @@
 <robot name="ombot" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <!-- Base geometry -->
-  <xacro:include filename="/home/frank/frank_ws/src/ombot_description/urdf/base/mecanum_base.urdf.xacro"/>
+  <xacro:include filename="$(find ombot_description)/urdf/base/mecanum_base.urdf.xacro"/>
   <xacro:mecanum_base prefix="" sep_x="0.40" sep_y="0.70" wheel_radius="0.05"/>
 
   <!-- Arm geometry -->
-  <xacro:include filename="/home/frank/frank_ws/src/ombot_description/urdf/arm/ombot_arm_module.urdf.xacro"/>
+  <xacro:include filename="$(find ombot_description)/urdf/arm/ombot_arm_module.urdf.xacro"/>
   <xacro:ombot_arm_module parent="base_link" mount_xyz="0.145 0.0 0.1" mount_rpy="0 0 0" prefix=""/>
 
   <!-- BASE: mock hardware -->
@@ -98,5 +98,19 @@
       <state_interface name="effort"/>
     </joint>
   </ros2_control>
+
+  <!-- ZED 2 camera mounted to base_link -->
+  <xacro:include filename="$(find ombot_description)/urdf/zed_macro.urdf.xacro"/>
+
+  <xacro:zed_camera name="zed2" model="zed2">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:zed_camera>
+
+  <joint name="zed2_camera_mount_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="zed2_camera_link"/>
+    <origin xyz="0.22 0.12 0.13" rpy="0 -0.05 ${-pi/2}"/>
+  </joint>
+
 
 </robot>

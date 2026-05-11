@@ -147,5 +147,17 @@
       </joint>
     </ros2_control>
 
+  <!-- ZED 2 camera mounted to base_link -->
+  <xacro:include filename="$(find ombot_description)/urdf/zed_macro.urdf.xacro"/>
+
+  <xacro:zed_camera name="zed2" model="zed2">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:zed_camera>
+
+  <joint name="zed2_camera_mount_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="zed2_camera_link"/>
+    <origin xyz="0.22 0.12 0.13" rpy="0 -0.05 ${-pi/2}"/>
+  </joint>
 
 </robot>

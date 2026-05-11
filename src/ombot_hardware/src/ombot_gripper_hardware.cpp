@@ -322,7 +322,9 @@ bool OMBotGripperHardware::set_operating_mode(uint8_t mode)
 {
   uint8_t err = 0;
   int rc = ph_->write1ByteTxRx(port_, dxl_id_, GRIPPER_ADDR_OPERATING_MODE, mode, &err);
-  if (rc != COMM_SUCCESS || err != 0) {
+  // if (rc != COMM_SUCCESS || err != 0) {
+  if (rc != COMM_SUCCESS || (err & 0x7F) != 0) {
+
     RCLCPP_ERROR(rclcpp::get_logger("OMBotGripperHardware"),
                  "set_operating_mode(%u) failed rc=%d err=%u", mode, rc, err);
     return false;
@@ -335,7 +337,7 @@ bool OMBotGripperHardware::set_torque(bool enable)
   uint8_t err = 0;
   int rc = ph_->write1ByteTxRx(port_, dxl_id_, GRIPPER_ADDR_TORQUE_ENABLE,
                                 enable ? 1 : 0, &err);
-  if (rc != COMM_SUCCESS || err != 0) {
+  if (rc != COMM_SUCCESS || (err & 0x7F) != 0) {
     RCLCPP_ERROR(rclcpp::get_logger("OMBotGripperHardware"),
                  "set_torque(%d) failed rc=%d err=%u", (int)enable, rc, err);
     return false;
