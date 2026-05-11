@@ -411,6 +411,12 @@ Voice commands supported:
 - "stop" / "halt" → stop all motion
 - "go home" → return to home position (TODO)
 
+### Chat assistant memory note
+
+If you are using Claude in VS Code chat, conversation history is usually scoped to that tool/session.
+Do not assume it is shared with claude.ai. If you want to continue elsewhere, copy a short summary
+of your current context (goals, commands run, errors, and next steps) into the new chat.
+
 ## Notes For Contributors
 
 - This repo is organized around real hardware, not a complete simulation stack.
