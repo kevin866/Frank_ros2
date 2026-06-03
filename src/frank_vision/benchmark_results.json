@@ -1,0 +1,26 @@
+{
+  "device": "Jetson Orin Nano",
+  "input": "640x640",
+  "model": "YuNet face_detection_yunet_2023mar",
+  "onnx": {
+    "label": "ONNX (onnxruntime / CPU)",
+    "n_runs": 200,
+    "mean_ms": 21.455,
+    "median_ms": 20.664,
+    "min_ms": 20.228,
+    "max_ms": 42.41,
+    "p95_ms": 24.76,
+    "fps": 46.6
+  },
+  "tensorrt": {
+    "label": "TensorRT FP16 (GPU)",
+    "n_runs": 200,
+    "mean_ms": 5.295,
+    "median_ms": 4.685,
+    "min_ms": 3.916,
+    "max_ms": 6.44,
+    "p95_ms": 6.405,
+    "fps": 188.8
+  },
+  "speedup_x": 4.05
+}

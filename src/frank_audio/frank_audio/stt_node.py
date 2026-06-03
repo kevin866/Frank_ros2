@@ -54,6 +54,7 @@ class STTNode(Node):
         # ── parameters ────────────────────────────────────────────────────────
         self.declare_parameter('model_size', 'tiny.en')
         self.declare_parameter('device', 'cpu')
+        self.declare_parameter('publish_intent', True)  # False when llm_intent_node handles it
         self.declare_parameter('sample_rate', 16000)        # whisper/VAD target rate
         self.declare_parameter('vad_aggressiveness', 2)
         self.declare_parameter('silence_timeout', 1.0)
@@ -69,7 +70,7 @@ class STTNode(Node):
         self.min_speech_duration = self.get_parameter('min_speech_duration').get_parameter_value().double_value
         self.native_sample_rate  = self.get_parameter('native_sample_rate').get_parameter_value().integer_value
         mic_device               = self.get_parameter('mic_device_index').get_parameter_value().integer_value
-
+        self.publish_intent = self.get_parameter('publish_intent').get_parameter_value().bool_value
         # ── publishers ────────────────────────────────────────────────────────
         self.pub_intent = self.create_publisher(String, '/frank/intent', 10)
         self.pub_raw    = self.create_publisher(String, '/voice/raw_text', 10)
@@ -193,18 +194,20 @@ class STTNode(Node):
             return
 
         self.get_logger().info(f'Heard: "{text}"')
-
-        # publish raw transcript
+        
+        
+        # publish raw transcript always
         raw_msg = String()
         raw_msg.data = text
         self.pub_raw.publish(raw_msg)
 
-        # classify intent and publish
-        intent, _ = classify_intent(text)
-        intent_msg = String()
-        intent_msg.data = intent
-        self.pub_intent.publish(intent_msg)
-        self.get_logger().info(f'Intent: {intent}')
+        # only publish intent directly if LLM node is not handling it
+        if self.publish_intent:
+            intent, _ = classify_intent(text)
+            intent_msg = String()
+            intent_msg.data = intent
+            self.pub_intent.publish(intent_msg)
+            self.get_logger().info(f'Intent: {intent}')
 
     # ── cleanup ───────────────────────────────────────────────────────────────
 

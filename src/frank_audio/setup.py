@@ -21,6 +21,7 @@ setup(
         'console_scripts': [
             'stt_node = frank_audio.stt_node:main',
             'test_whisper = frank_audio.test_whisper:main',  # add this
+            'llm_intent_node = frank_audio.llm_intent_node:main',  # add this
         ],
     },
 )

@@ -1,6 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
@@ -50,6 +50,16 @@ def generate_launch_description():
         default_value='true',
         description='Launch mecanum base controller'
     )
+    llm_model_arg = DeclareLaunchArgument(
+        'llm_model',
+        default_value='llama3.2:3b',
+        description='Ollama model used for intent classification'
+    )
+    use_llm_arg = DeclareLaunchArgument(
+        'use_llm',
+        default_value='true',
+        description='Use LLM intent node (true) or keyword map in stt_node (false)'
+    )
 
     # ── include robot_camera.launch.py (ZED + RSP + controller_manager) ───────
     robot_camera_launch = IncludeLaunchDescription(
@@ -83,23 +93,46 @@ def generate_launch_description():
         name='face_detector_node',
         output='screen',
         parameters=[{
-            'image_topic':   LaunchConfiguration('image_topic'),
-            'display_debug': LaunchConfiguration('display_debug'),
+            'image_topic':     LaunchConfiguration('image_topic'),
+            'display_debug':   LaunchConfiguration('display_debug'),
             'score_threshold': 0.85,
         }]
     )
 
-    stt_node = Node(
-        package='frank_audio',
-        executable='stt_node',
-        name='stt_node',
+    # stt_node always starts — it publishes /voice/raw_text for the LLM path,
+    # or /frank/intent directly when use_llm:=false (keyword map mode).
+    stt_params = {
+        'model_size':         LaunchConfiguration('model_size'),
+        'vad_aggressiveness': LaunchConfiguration('vad_aggressiveness'),
+        'device':             'cpu',
+        'mic_device_index':   0,
+        'native_sample_rate': 44100,
+    }
+
+    stt_node_llm = Node(
+        package='frank_audio', executable='stt_node', name='stt_node',
         output='screen',
+        condition=IfCondition(LaunchConfiguration('use_llm')),
+        parameters=[{**stt_params, 'publish_intent': False}]
+    )
+
+    stt_node_keyword = Node(
+        package='frank_audio', executable='stt_node', name='stt_node',
+        output='screen',
+        condition=UnlessCondition(LaunchConfiguration('use_llm')),
+        parameters=[{**stt_params, 'publish_intent': True}]
+    )
+
+    # Only started when use_llm:=true
+    llm_intent_node = Node(
+        package='frank_audio',
+        executable='llm_intent_node',
+        name='llm_intent_node',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('use_llm')),
         parameters=[{
-            'model_size':         LaunchConfiguration('model_size'),
-            'vad_aggressiveness': LaunchConfiguration('vad_aggressiveness'),
-            'device':             'cpu',
-            'mic_device_index':   0,
-            'native_sample_rate': 44100,
+            'model':       LaunchConfiguration('llm_model'),
+            'timeout_sec': 5.0,
         }]
     )
 
@@ -120,12 +153,16 @@ def generate_launch_description():
         start_control_arg,
         start_jsb_arg,
         launch_base_arg,
+        llm_model_arg,
+        use_llm_arg,
         # hardware + camera
         robot_camera_launch,
         # base controller
         base_controller_launch,
         # perception + audio + behavior
         face_detector_node,
-        stt_node,
+        stt_node_llm,
+        stt_node_keyword,
+        llm_intent_node,
         behavior_manager_node,
     ])
